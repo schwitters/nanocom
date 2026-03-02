@@ -321,7 +321,8 @@ static void parse_interface(parser_t *p, const char *uuid, const char *doc)
     append_interface(p->file, it);
 
     while (!is(p, TOK_RBRACE) && !is(p, TOK_EOF)) {
-        parse_method(p, it);
+		const char *mdoc = parse_doc_opt(p);
+        parse_method(p, it,mdoc);
         if (p->had_error) return;
     }
     (void)expect(p, TOK_RBRACE, "expected '}' after interface");

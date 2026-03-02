@@ -1,15 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "nano_style.h"
+#include <ncom/style.h>
+#include <ncom/plugin_loader.h>
 #include "helpers.h"
-#include "plugin_loader.h"
 #include "nano_ids.h"
 
 /* Example 1: Use CHECK_SET_ERR with an interface method that returns i_error_info_t. */
 static status_t example_clock2(plugin_api_v1_t const *api)
 {
-    status_t st = STATUS_OK;
+    ncom_status_t st = NCOM_STATUS_OK;
     i_unknown_t *u = NULL;
     i_clock2_t *clk2 = NULL;
     i_error_info_t *err = NULL;
@@ -27,7 +27,7 @@ static status_t example_clock2(plugin_api_v1_t const *api)
     printf("example_clock2: now_ms=%lld\n", (long long)now_ms);
 
 cleanup:
-    if (STATUS_FAILED(st)) {
+    if (NCOM_STATUS_FAILED(st)) {
         const char *msg = NULL;
         if (err) (void)err->vtbl->get_message_cstr(err, &msg);
         fprintf(stderr, "example_clock2 failed: %d (%s)\n", (int)st, msg ? msg : "(no message)");
@@ -41,7 +41,7 @@ cleanup:
 /* Example 2: Use CHECK_ERR when you want to keep ERR untouched and handle it manually. */
 static status_t example_manual_err(plugin_api_v1_t const *api)
 {
-    status_t st = STATUS_OK;
+    status_t st = NCOM_STATUS_OK;
     i_unknown_t *u = NULL;
     i_clock2_t *clk2 = NULL;
     i_error_info_t *err = NULL;
@@ -60,7 +60,7 @@ static status_t example_manual_err(plugin_api_v1_t const *api)
     printf("example_manual_err: now_ms=%lld\n", (long long)now_ms);
 
 cleanup:
-    if (STATUS_FAILED(st)) {
+    if (NCOM_STATUS_FAILED(st)) {
         /* Show message via i_string as well. */
         i_string_t *s = NULL;
         const char *c = NULL;
@@ -80,7 +80,7 @@ cleanup:
 
 int main(int argc, char **argv)
 {
-    status_t st = STATUS_OK;
+    status_t st = NCOM_STATUS_OK;
     plugin_handle_t *ph = NULL;
     const plugin_api_v1_t *api = NULL;
 
@@ -97,13 +97,13 @@ int main(int argc, char **argv)
     CHECK(plugin_load(path, &ph, &api));
 
     st = example_clock2(api);
-    if (STATUS_FAILED(st)) goto cleanup;
+    if (NCOM_STATUS_FAILED(st)) goto cleanup;
 
     st = example_manual_err(api);
-    if (STATUS_FAILED(st)) goto cleanup;
+    if (NCOM_STATUS_FAILED(st)) goto cleanup;
 
 cleanup:
     plugin_unload(ph);
-    if (STATUS_FAILED(st)) return 1;
+    if (NCOM_STATUS_FAILED(st)) return 1;
     return 0;
 }

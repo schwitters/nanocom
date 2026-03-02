@@ -1,29 +1,15 @@
-add_executable(nano_tests
-    nano_tests.c
-    ../src/plugin_loader.c
-)
+add_executable(nano_tests nano_tests.c)
 
-target_include_directories(nano_tests PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src
-)
+target_link_libraries(nano_tests PRIVATE ncom)
+ncom_generate_headers(TARGET nano_tests IDLS ../samples/idl/demo.idl)
 
-if (MSVC)
+
+if(MSVC)
     target_compile_options(nano_tests PRIVATE /W4)
+    target_compile_definitions(nano_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
 else()
     target_compile_options(nano_tests PRIVATE -Wall -Wextra -Wpedantic)
-    if (UNIX AND NOT APPLE)
-        target_link_libraries(nano_tests PRIVATE dl)
-    endif()
 endif()
 
-add_dependencies(nano_tests sample_plugin)
-
-add_test(NAME nano_tests
-    COMMAND nano_tests $<TARGET_FILE:sample_plugin>
-)
-
-if (NANO_GENERATE_FROM_IDL)
-  target_include_directories(nano_tests PRIVATE ${CMAKE_BINARY_DIR}/generated/include)
-  add_dependencies(nano_tests nidl_generated)
-endif()
+# (Optional) Den Test für 'ctest' registrieren
+add_test(NAME NanoTests COMMAND nano_tests)

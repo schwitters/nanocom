@@ -106,7 +106,7 @@ token_t lexer_next(lexer_t *lx)
     if (!c) return make(TOK_EOF, s+i, 0, line, col);
 
 
-    /* doc comment: ///... or /** ... */ */
+    /* doc comment: ///... or JAVADOC COMMENT  */
     if (c == '/' && s[i+1] == '/' && s[i+2] == '/') {
         adv(lx, '/'); adv(lx, '/'); adv(lx, '/');
         size_t start = lx->i;

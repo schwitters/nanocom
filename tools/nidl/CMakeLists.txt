@@ -10,7 +10,7 @@ add_executable(nidlgen
     nidl_arena.c
     nidl_codegen_c.c
 )
-
+target_compile_definitions(nidlgen PRIVATE _CRT_SECURE_NO_WARNINGS)
 target_include_directories(nidlgen PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include

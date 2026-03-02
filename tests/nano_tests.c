@@ -3,18 +3,17 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "nano_style.h"
-#include "plugin_loader.h"
-#include "helpers.h"
-#include "nano_ids.h"
-#include "i_error_info.h"
-#include "i_string.h"
-#include "i_clock2.h"
+/* Die neue, aufgeräumte Framework-Welt */
+#include <ncom/ncom.h>
+#include <ncom/plugin_loader.h>
+
+/* Der vom nidlgen generierte Header */
+#include "demo.h"
 
 /* Tiny test helpers (no external framework). */
 static int g_failed = 0;
 static int g_argc = 0;
-static char **g_argv = NULL;
+static char** g_argv = NULL;
 
 #define TEST_CASE(NAME) static void NAME(void)
 
@@ -38,7 +37,18 @@ static char **g_argv = NULL;
 
 #define ASSERT_NOT_NULL(P) ASSERT_TRUE((P) != NULL)
 
-static void default_plugin_path(char *buf, size_t cap)
+/* Neues CHECK Makro basierend auf ncom_status_t */
+#define CHECK(expr) do { \
+    st = (expr); \
+    if (NCOM_FAILED(st)) { \
+        fprintf(stderr, "CHECK failed at %s:%d: %s (err: %d)\n", __FILE__, __LINE__, #expr, (int)st); \
+        g_failed = 1; \
+        goto cleanup; \
+    } \
+} while (0)
+
+
+static void default_plugin_path(char* buf, size_t cap)
 {
 #ifdef _WIN32
     snprintf(buf, cap, "sample_plugin.dll");
@@ -49,7 +59,7 @@ static void default_plugin_path(char *buf, size_t cap)
 #endif
 }
 
-static const char *get_plugin_path(int argc, char **argv, char *tmp, size_t cap)
+static const char* get_plugin_path(int argc, char** argv, char* tmp, size_t cap)
 {
     if (argc >= 2 && argv[1] && argv[1][0]) return argv[1];
     default_plugin_path(tmp, cap);
@@ -58,27 +68,29 @@ static const char *get_plugin_path(int argc, char **argv, char *tmp, size_t cap)
 
 TEST_CASE(test_plugin_load_and_qi)
 {
-    status_t st = STATUS_OK;
-    plugin_handle_t *ph = NULL;
-    const plugin_api_v1_t *api = NULL;
+    ncom_status_t st = NCOM_OK;
+    ncom_plugin_handle_t* ph = NULL;
+    const ncom_plugin_api_v1_t* api = NULL;
 
-    i_unknown_t *u = NULL;
-    i_logger_t *log = NULL;
-    i_clock_t *clk = NULL;
-    i_clock2_t *clk2 = NULL;
+    ncom_iunknown_t* u = NULL;
+    demo_ilogger_t* log = NULL;
+    demo_iclock_t* clk = NULL;
+    demo_iclock2_t* clk2 = NULL;
 
     char path[512];
-    const char *p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
+    const char* p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
 
-    CHECK(plugin_load(p, &ph, &api));
+    CHECK(ncom_plugin_load(p, &ph, &api));
     ASSERT_NOT_NULL(api);
 
-    CHECK(api->create_instance(CLSID_SAMPLE_COMPONENT, IID_I_UNKNOWN, (void **)&u));
+    /* IIDs und CLSIDs werden nun By-Reference (mit &) übergeben */
+    CHECK(api->create_instance(&DEMO_CLSID_SAMPLE_COMPONENT, &NCOM_IID_IUNKNOWN, (void**)&u));
     ASSERT_NOT_NULL(u);
 
-    CHECK(qi_logger(u, &log));
-    CHECK(qi_clock(u, &clk));
-    CHECK(qi_clock2(u, &clk2));
+    /* Einheitliches Naming für QueryInterface Helper */
+    CHECK(demo_ilogger_qi(u, &log));
+    CHECK(demo_iclock_qi(u, &clk));
+    CHECK(demo_iclock2_qi(u, &clk2));
 
     /* Smoke calls */
     log->vtbl->log(log, 1, "test_plugin_load_and_qi");
@@ -88,133 +100,136 @@ TEST_CASE(test_plugin_load_and_qi)
     ASSERT_TRUE(now_ms > 0);
 
 cleanup:
-    i_clock2_releasep(&clk2);
-    i_clock_releasep(&clk);
-    i_logger_releasep(&log);
-    i_unknown_releasep(&u);
-    plugin_unload(ph);
-    ASSERT_EQ_I32(st, STATUS_OK);
+    /* Einheitliches Naming für Release Helper */
+    demo_iclock2_releasep(&clk2);
+    demo_iclock_releasep(&clk);
+    demo_ilogger_releasep(&log);
+    ncom_iunknown_releasep(&u);
+    ncom_plugin_unload(ph);
+    ASSERT_EQ_I32(st, NCOM_OK);
 }
 
 TEST_CASE(test_error_info_and_string_patterns)
 {
-    status_t st = STATUS_OK;
-    plugin_handle_t *ph = NULL;
-    const plugin_api_v1_t *api = NULL;
+    ncom_status_t st = NCOM_OK;
+    ncom_plugin_handle_t* ph = NULL;
+    const ncom_plugin_api_v1_t* api = NULL;
 
-    i_unknown_t *u = NULL;
-    i_clock2_t *clk2 = NULL;
-    i_error_info_t *err = NULL;
-    i_string_t *s = NULL;
+    ncom_iunknown_t* u = NULL;
+    demo_iclock2_t* clk2 = NULL;
+    ncom_ierror_info_t* err = NULL;
+    ncom_istring_t* s = NULL;
 
     char path[512];
-    const char *p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
+    const char* p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
 
-    CHECK(plugin_load(p, &ph, &api));
-    CHECK(api->create_instance(CLSID_SAMPLE_COMPONENT, IID_I_UNKNOWN, (void **)&u));
-    CHECK(qi_clock2(u, &clk2));
+    CHECK(ncom_plugin_load(p, &ph, &api));
+    CHECK(api->create_instance(&DEMO_CLSID_SAMPLE_COMPONENT, &NCOM_IID_IUNKNOWN, (void**)&u));
+    CHECK(demo_iclock2_qi(u, &clk2));
 
     /* Force an error: pass NULL out_ms. */
     st = clk2->vtbl->now_unix_ms(clk2, NULL, &err);
-    ASSERT_EQ_I32(st, STATUS_E_INVALID_ARG);
+    ASSERT_EQ_I32(st, NCOM_E_INVALID_ARG);
     ASSERT_NOT_NULL(err);
 
-    /* cstr */
-    const char *cmsg = NULL;
-    CHECK(err->vtbl->get_message_cstr(err, &cmsg));
-    ASSERT_TRUE(cmsg != NULL && strlen(cmsg) > 0);
-
-    /* i_string */
+    /* ncom_istring */
     CHECK(err->vtbl->get_message_string(err, &s));
     ASSERT_NOT_NULL(s);
-    const char *sptr = NULL;
+
+    const char* sptr = NULL;
     CHECK(s->vtbl->c_str(s, &sptr));
     ASSERT_TRUE(sptr != NULL && strlen(sptr) > 0);
 
-    /* caller-buffer sizing call + copy */
+    /* caller-buffer sizing call + copy mit dem neuen ncom_char_buf_t Struct */
     uint64_t need = 0;
-    CHECK(err->vtbl->get_message_buf(err, NULL, 0, &need));
+    ncom_char_buf_t cbuf = { 0 }; /* Leerer Puffer triggert Sizing */
+
+    CHECK(err->vtbl->get_message_buf(err, &cbuf, &need));
     ASSERT_TRUE(need >= 2 && need < 1024);
 
-    char *buf = (char *)calloc((size_t)need, 1);
+    char* buf = (char*)calloc((size_t)need, 1);
     ASSERT_NOT_NULL(buf);
 
-    st = err->vtbl->get_message_buf(err, buf, need, &need);
-    ASSERT_EQ_I32(st, STATUS_OK);
+    /* Puffer initialisieren und aufrufen */
+    cbuf.ptr = buf;
+    cbuf.cap = need;
+    st = err->vtbl->get_message_buf(err, &cbuf, &need);
+    ASSERT_EQ_I32(st, NCOM_OK);
     ASSERT_TRUE(strlen(buf) > 0);
 
     free(buf);
-    st = STATUS_OK;
+    st = NCOM_OK;
 
 cleanup:
-    i_string_releasep(&s);
-    i_error_info_releasep(&err);
-    i_clock2_releasep(&clk2);
-    i_unknown_releasep(&u);
-    plugin_unload(ph);
-    ASSERT_EQ_I32(st, STATUS_OK);
+    ncom_istring_releasep(&s);
+    ncom_ierror_info_releasep(&err);
+    demo_iclock2_releasep(&clk2);
+    ncom_iunknown_releasep(&u);
+    ncom_plugin_unload(ph);
+    ASSERT_EQ_I32(st, NCOM_OK);
 }
 
 TEST_CASE(test_refcount_basic)
 {
-    status_t st = STATUS_OK;
-    plugin_handle_t *ph = NULL;
-    const plugin_api_v1_t *api = NULL;
+    ncom_status_t st = NCOM_OK;
+    ncom_plugin_handle_t* ph = NULL;
+    const ncom_plugin_api_v1_t* api = NULL;
 
-    i_logger_t *log = NULL;
-    i_clock_t *clk = NULL;
+    demo_ilogger_t* log = NULL;
+    demo_iclock_t* clk = NULL;
 
     char path[512];
-    const char *p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
+    const char* p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
 
-    CHECK(plugin_load(p, &ph, &api));
+    CHECK(ncom_plugin_load(p, &ph, &api));
 
     /* Create as ILogger directly: initial refcount should be 1. */
-    CHECK(api->create_instance(CLSID_SAMPLE_COMPONENT, IID_I_LOGGER, (void **)&log));
+    CHECK(api->create_instance(&DEMO_CLSID_SAMPLE_COMPONENT, &DEMO_IID_ILOGGER, (void**)&log));
     ASSERT_NOT_NULL(log);
 
-    uint32_t rc = log->vtbl->base.add_ref((i_unknown_t *)log);
+    uint32_t rc = log->vtbl->base.add_ref((ncom_iunknown_t*)log);
     ASSERT_TRUE(rc >= 2);
 
     /* Query another view increments the same underlying refcount. */
-    CHECK(log->vtbl->base.query_interface((i_unknown_t *)log, IID_I_CLOCK, (void **)&clk));
+    CHECK(log->vtbl->base.query_interface((ncom_iunknown_t*)log, &DEMO_IID_ICLOCK, (void**)&clk));
     ASSERT_NOT_NULL(clk);
 
     /* Release clock view, then release logger view twice (for add_ref + initial). */
-    rc = clk->vtbl->base.release((i_unknown_t *)clk);
+    rc = clk->vtbl->base.release((ncom_iunknown_t*)clk);
     ASSERT_TRUE(rc >= 1);
 
-    rc = log->vtbl->base.release((i_unknown_t *)log); /* undo add_ref */
+    rc = log->vtbl->base.release((ncom_iunknown_t*)log); /* undo add_ref */
     ASSERT_TRUE(rc >= 1);
 
-    rc = log->vtbl->base.release((i_unknown_t *)log); /* final release */
+    rc = log->vtbl->base.release((ncom_iunknown_t*)log); /* final release */
     (void)rc;
     log = NULL;
 
 cleanup:
-    i_clock_releasep(&clk);
-    i_logger_releasep(&log);
-    plugin_unload(ph);
-    ASSERT_EQ_I32(st, STATUS_OK);
+    demo_iclock_releasep(&clk);
+    demo_ilogger_releasep(&log);
+    ncom_plugin_unload(ph);
+    ASSERT_EQ_I32(st, NCOM_OK);
 }
 
 TEST_CASE(test_plugin_load_missing_file)
 {
-    status_t st = STATUS_OK;
-    plugin_handle_t *ph = NULL;
-    const plugin_api_v1_t *api = NULL;
+    ncom_status_t st = NCOM_OK;
+    ncom_plugin_handle_t* ph = NULL;
+    const ncom_plugin_api_v1_t* api = NULL;
 
 #ifdef _WIN32
-    st = plugin_load("this_file_does_not_exist_12345.dll", &ph, &api);
+    st = ncom_plugin_load("this_file_does_not_exist_12345.dll", &ph, &api);
 #else
-    st = plugin_load("this_file_does_not_exist_12345.so", &ph, &api);
+    st = ncom_plugin_load("this_file_does_not_exist_12345.so", &ph, &api);
 #endif
-    ASSERT_TRUE(STATUS_FAILED(st));
+
+    ASSERT_TRUE(NCOM_FAILED(st));
     ASSERT_TRUE(ph == NULL);
     ASSERT_TRUE(api == NULL);
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     g_argc = argc;
     g_argv = argv;

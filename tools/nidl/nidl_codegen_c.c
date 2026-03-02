@@ -33,7 +33,17 @@ static int mkdir_p(const char *path)
     if (tmp[0] && !mkdir_one(tmp)) return 0;
     return 1;
 }
-
+static void format_ident(const char *in, char *out, size_t cap) {
+    if (!in) { 
+        if (cap > 0) out[0] = '\0'; 
+        return; 
+    }
+    if (in[0] == 'i' && in[1] == '_') {
+        snprintf(out, cap, "i%s", in + 2);
+    } else {
+        snprintf(out, cap, "%s", in);
+    }
+}
 static void ln(FILE *fp, const char *s) { fputs(s, fp); fputc('\n', fp); }
 
 static int is_space(char c) { return c==' ' || c=='\t' || c=='\n'; }
@@ -182,18 +192,28 @@ static const char *map_prim(const char *t)
     else if (strncmp(p, "signed ", 7)==0) { p += 7; }
 
     const char *mapped = NULL;
+    /* Basic C types */
     if (strcmp(p, "octet")==0) mapped = "uint8_t";
     else if (strcmp(p, "char")==0) mapped = "char";
     else if (strcmp(p, "int")==0) mapped = is_unsigned ? "uint32_t" : "int32_t";
     else if (strcmp(p, "short")==0) mapped = is_unsigned ? "uint16_t" : "int16_t";
     else if (strcmp(p, "long")==0) mapped = is_unsigned ? "uint32_t" : "int32_t";
     else if (strcmp(p, "long long")==0) mapped = is_unsigned ? "uint64_t" : "int64_t";
-    else if (strcmp(p, "uuid")==0) mapped = "nanoc_iid_t";
-	else if (strcmp(p, "clsid")==0) mapped = "nanoc_clsid_t";
     else if (strcmp(p, "void_ptr")==0) mapped = "void*";
     else if (strcmp(p, "const_char_ptr")==0) mapped = "const char*";
-    else if (strcmp(p, "string_view")==0) mapped = "nano_string_view_t";
-    else if (strcmp(p, "char_buf")==0) mapped = "nano_char_buf_t";
+    
+    /* ncom Framework Base Types */
+    else if (strcmp(p, "status_t")==0) mapped = "ncom_status_t";
+    else if (strcmp(p, "uuid")==0) mapped = "ncom_iid_t";
+    else if (strcmp(p, "clsid")==0) mapped = "ncom_clsid_t";
+    else if (strcmp(p, "string_view")==0) mapped = "ncom_string_view_t";
+    else if (strcmp(p, "char_buf")==0) mapped = "ncom_char_buf_t";
+    
+    /* ncom Framework Core Interfaces */
+    else if (strcmp(p, "i_unknown")==0) mapped = "ncom_iunknown_t";
+    else if (strcmp(p, "i_factory")==0) mapped = "ncom_ifactory_t";
+    else if (strcmp(p, "i_string")==0) mapped = "ncom_istring_t";
+    else if (strcmp(p, "i_error_info")==0) mapped = "ncom_ierror_info_t";
 
     if (!mapped) mapped = p;
 
@@ -346,27 +366,68 @@ static int is_struct_type(const idl_file_t *f, const char *t)
 
 static const char *map_type(const idl_file_t *f, const char *t)
 {
-    /* Map primitives/typedef-builtin names first */
+    /* Map primitives and framework types first */
     const char *m = map_prim(t);
     if (m && strcmp(m, t) != 0) return m;
 
-    /* Known structs: <name>_t */
-    if (is_struct_type(f, t)) {
+    /* Known user structs or interfaces get the module prefix: module_type_t */
+    if (is_struct_type(f, t) || is_interface_type(f, t)) {
         static char buf[256];
-        snprintf(buf, sizeof(buf), "%s_t", t);
+        const char *mod = f->module_name ? f->module_name : "mod";
+        snprintf(buf, sizeof(buf), "%s_%s_t", mod, t);
         return buf;
     }
 
-    /* Unknown user-defined types: keep as-is */
     return t;
 }
 
-static const char *vtbl_base_type(const idl_interface_t *it)
-{
-    if (!it->base || it->base[0] == 0) return "i_unknown_vtbl_t";
-    /* base interface vtbl type */
+static const char *format_user_type(const idl_file_t *f, const char *t) {
     static char buf[256];
-    snprintf(buf, sizeof(buf), "%s_vtbl_t", it->base);
+    char clean_name[256];
+    
+    format_ident(t, clean_name, sizeof(clean_name));
+    
+    const char *mod = f->module_name ? f->module_name : "mod";
+    snprintf(buf, sizeof(buf), "%s_%s_t", mod, clean_name);
+    return buf;
+}
+
+static const char *vtbl_base_type(const idl_file_t *f, const idl_interface_t *it)
+{
+    /* 1. Impliziter Fallback: Kein Base angegeben -> IUnknown */
+    if (!it->base || it->base[0] == '\0') {
+        return "ncom_iunknown_vtbl_t";
+    }
+    
+    /* 2. Bypass für das wichtigste Basis-Interface (IUnknown) 
+     * Wir fangen hier sowohl das rohe IDL-Wort "i_unknown" als auch 
+     * ein potenzielles "ncom_iunknown" ab. */
+    if (strcmp(it->base, "i_unknown") == 0 || strcmp(it->base, "ncom_iunknown") == 0) {
+        return "ncom_iunknown_vtbl_t";
+    }
+
+    /* 3. Bypass für andere Framework Core-Interfaces (für den seltenen Fall, 
+     * dass jemand von i_string oder i_error_info erbt) */
+    if (strcmp(it->base, "i_string") == 0 || strcmp(it->base, "ncom_istring") == 0) {
+        return "ncom_istring_vtbl_t";
+    }
+    if (strcmp(it->base, "i_error_info") == 0 || strcmp(it->base, "ncom_ierror_info") == 0) {
+        return "ncom_ierror_info_vtbl_t";
+    }
+    if (strcmp(it->base, "i_factory") == 0 || strcmp(it->base, "ncom_ifactory") == 0) {
+        return "ncom_ifactory_vtbl_t";
+    }
+
+    /* 4. User-Interfaces im aktuellen Modul (bekommen das Präfix) */
+    static char buf[256];
+    char clean_base[256];
+    
+    // Die Funktion format_ident entfernt das "i_" (i_logger -> ilogger)
+    format_ident(it->base, clean_base, sizeof(clean_base));
+    
+    const char *mod = f->module_name ? f->module_name : "mod";
+    snprintf(buf, sizeof(buf), "%s_%s_vtbl_t", mod, clean_base);
+    
     return buf;
 }
 
@@ -375,12 +436,11 @@ static void emit_module_preamble(FILE *fp, const char *module_name)
     char up[256];
     to_upper_guard(module_name ? module_name : "MODULE", up);
 
-    fprintf(fp, "#ifndef _NANO_COMPONENT_%s_H__\n", up);
-    fprintf(fp, "#define _NANO_COMPONENT_%s_H__\n\n", up);
+    fprintf(fp, "#ifndef _NCOM_GENERATED_%s_H__\n", up);
+    fprintf(fp, "#define _NCOM_GENERATED_%s_H__\n\n", up);
 
-    ln(fp, "#include <nano_base.h>");
-    ln(fp, "#include <nano_status.h>");
-    ln(fp, "#include <stdint.h>");
+    /* Include the core framework umbrella header */
+    ln(fp, "#include <ncom/ncom.h>");
     fputc('\n', fp);
 
     ln(fp, "#ifdef __cplusplus");
@@ -389,19 +449,44 @@ static void emit_module_preamble(FILE *fp, const char *module_name)
     fputc('\n', fp);
 }
 
-static void emit_module_epilogue(FILE *fp, const char *module_name)
+static void emit_module_epilogue(FILE* fp, const idl_file_t* f)
 {
-    (void)module_name;
+    const char* module_name = f->module_name ? f->module_name : "module";
+
+    char mod_up[256];
+    to_upper_ident(module_name, mod_up);
+
     fputc('\n', fp);
     ln(fp, "#ifdef __cplusplus");
-    ln(fp, "} /* extern \"C\" */");
-    ln(fp, "#endif");
-    fputc('\n', fp);
+    ln(fp, "} /* extern \"C\" */\n");
 
-    /* close guard */
-    char up[256];
-    to_upper_guard(module_name ? module_name : "MODULE", up);
-    fprintf(fp, "#endif /* _NANO_COMPONENT_%s_H__ */\n", up);
+    /* Generate C++ traits for type-safe query_interface (ncom::ptr) */
+    ln(fp, "namespace ncom {");
+
+    for (const idl_interface_t* it = f->interfaces; it; it = it->next) {
+        if (!it->name) continue;
+
+        /* 1. Das 'i_' Präfix entfernen (i_clock2 -> iclock2) */
+        char clean_name[256];
+        format_ident(it->name, clean_name, sizeof(clean_name));
+
+        /* 2. In Großbuchstaben für die IID umwandeln (iclock2 -> ICLOCK2) */
+        char up[256];
+        to_upper_ident(clean_name, up);
+
+        /* 3. Sauber formatiert ausgeben! */
+        fprintf(fp, "    template<> struct iid_traits<%s_%s_t> {\n", module_name, clean_name);
+        fprintf(fp, "        static const ncom_iid_t* get() { return &%s_IID_%s; }\n", mod_up, up);
+        fprintf(fp, "    };\n");
+    }
+
+    ln(fp, "} /* namespace ncom */");
+    ln(fp, "#endif /* __cplusplus */\n");
+
+    /* Close the include guard */
+    char guard_up[256];
+    to_upper_guard(module_name, guard_up);
+    fprintf(fp, "#endif /* _NCOM_GENERATED_%s_H__ */\n", guard_up);
 }
 
 static void emit_typedefs(FILE *fp, const idl_file_t *f)
@@ -453,8 +538,9 @@ static void emit_structs(FILE *fp, const idl_file_t *f)
 
 static void emit_ids(FILE *fp, const idl_file_t *f)
 {
-    fputc('\n', fp);
-    ln(fp, "/* Interface IDs (IIDs) */");
+    char mod_up[256];
+    to_upper_ident(f->module_name ? f->module_name : "MOD", mod_up);
+
     for (const idl_interface_t *it = f->interfaces; it; it = it->next) {
         if (!it->name || !it->uuid) continue;
         uint8_t u[16];
@@ -462,15 +548,20 @@ static void emit_ids(FILE *fp, const idl_file_t *f)
         uint64_t hi, lo;
         uuid_to_u64_pair(u, &hi, &lo);
 
+        /* 1. Bereinige den Namen: "i_logger" -> "ilogger" */
+        char clean_name[256];
+        format_ident(it->name, clean_name, sizeof(clean_name));
+
+        /* 2. In Großbuchstaben umwandeln: "ilogger" -> "ILOGGER" */
         char up[256];
-        to_upper_ident(it->name, up);
+        to_upper_ident(clean_name, up);
 
-        fprintf(fp, "static const nanoc_iid_t IID_%s = { 0x%016llxULL, 0x%016llxULL };\n",
-                up, (unsigned long long)hi, (unsigned long long)lo);
+        /* 3. Generiert: static const ncom_iid_t DEMO_IID_ILOGGER = ... */
+        fprintf(fp, "static const ncom_iid_t %s_IID_%s = { 0x%016llxULL, 0x%016llxULL };\n",
+                mod_up, up, (unsigned long long)hi, (unsigned long long)lo);
     }
-
-    fputc('\n', fp);
-    ln(fp, "/* Class IDs (CLSIDs) */");
+    
+    /* Optional: Das Gleiche für CLSIDs, falls du coclasses in der IDL hast */
     for (const idl_coclass_t *cc = f->coclasses; cc; cc = cc->next) {
         if (!cc->name || !cc->uuid) continue;
         uint8_t u[16];
@@ -481,63 +572,87 @@ static void emit_ids(FILE *fp, const idl_file_t *f)
         char up[256];
         to_upper_ident(cc->name, up);
 
-        fprintf(fp, "static const nanoc_clsid_t CLSID_%s = { 0x%016llxULL, 0x%016llxULL };\n",
-                up, (unsigned long long)hi, (unsigned long long)lo);
+        fprintf(fp, "static const ncom_clsid_t %s_CLSID_%s = { 0x%016llxULL, 0x%016llxULL };\n",
+                mod_up, up, (unsigned long long)hi, (unsigned long long)lo);
     }
     fputc('\n', fp);
 }
-
+static int is_framework_iface(const char* t) {
+    if (!t) return 0;
+    return strcmp(t, "i_unknown") == 0 || 
+           strcmp(t, "i_factory") == 0 ||
+           strcmp(t, "i_string") == 0 || 
+           strcmp(t, "i_error_info") == 0;
+}
 static void emit_interfaces(FILE *fp, const idl_file_t *f)
 {
-    int n=0;
+    int n = 0;
     const idl_interface_t **arr = interfaces_to_array(f->interfaces, &n);
     if (arr && n > 1) sort_interfaces_by_base(f, arr, n);
 
-    /* Forward decls */
-    for (int i=0;i<n;i++) {
+    const char *mod = f->module_name ? f->module_name : "mod";
+
+    /* 1. Forward declarations */
+    for (int i = 0; i < n; i++) {
         const idl_interface_t *it = arr[i];
         if (!it->name) continue;
+        
+        /* Namen bereinigen: i_logger -> ilogger */
+        char clean_name[256];
+        format_ident(it->name, clean_name, sizeof(clean_name));
+
         emit_doc(fp, it->doc, 0);
-        fprintf(fp, "typedef struct %s_s %s_t;\n", it->name, it->name);
+        fprintf(fp, "typedef struct %s_%s_s %s_%s_t;\n", mod, clean_name, mod, clean_name);
     }
     fputc('\n', fp);
 
-    /* vtbl + object layout */
-    for (int i=0;i<n;i++) {
+    /* 2. VTable + object layout */
+    for (int i = 0; i < n; i++) {
         const idl_interface_t *it = arr[i];
         if (!it->name) continue;
 
-        fprintf(fp, "typedef struct %s_vtbl_s {\n", it->name);
-        fprintf(fp, "    %s base;\n", vtbl_base_type(it));
+        /* Namen bereinigen */
+        char clean_name[256];
+        format_ident(it->name, clean_name, sizeof(clean_name));
 
-        int mcount=0;
+        fprintf(fp, "typedef struct %s_%s_vtbl_s {\n", mod, clean_name);
+        
+        /* Base interface vtbl */
+        fprintf(fp, "    %s base;\n", vtbl_base_type(f, it));
+
+        int mcount = 0;
         const idl_method_t **marr = methods_to_array(it->methods, &mcount);
-        for (int mi=0; mi<mcount; mi++) {
+        for (int mi = 0; mi < mcount; mi++) {
             const idl_method_t *m = marr[mi];
+            
+            /* map_type nutzt intern ebenfalls format_user_type, 
+             * um z.B. bei return types das 'i_' zu filtern! */
             const char *ret = map_type(f, m->ret_type);
 
             emit_doc(fp, m->doc, 4);
-            fprintf(fp, "    %s (*%s)(%s_t *self", ret, m->name, it->name);
+            
+            /* WICHTIG: Hier muss clean_name für den 'self'-Pointer stehen! */
+            fprintf(fp, "    %s (*%s)(%s_%s_t *self", ret, m->name, mod, clean_name);
 
-            int pcount=0;
+            int pcount = 0;
             const idl_param_t **parr = params_to_array(m->params, &pcount);
-            for (int pi=0; pi<pcount; pi++) {
+            for (int pi = 0; pi < pcount; pi++) {
                 const idl_param_t *pa = parr[pi];
+                const char *ct = map_type(f, pa->type);
 
-                if (is_interface_type(f, pa->type) && strcmp(pa->dir, "out")==0) {
-                    fprintf(fp, ", %s_t **%s", pa->type, pa->name);
+                int is_iface = is_interface_type(f, pa->type) || is_framework_iface(pa->type);
+
+                if (is_iface && strcmp(pa->dir, "out") == 0) {
+                    fprintf(fp, ", %s **%s", ct, pa->name);
                     continue;
                 }
 
-                const char *ct = map_type(f, pa->type);
-                
-                //128-Bit ID-Types
-                int is_128bit = (strcmp(pa->type, "uuid") == 0 || strcmp(pa->type, "clsid") == 0);
+                int is_128bit = (pa->type != NULL) && 
+                                (strcmp(pa->type, "uuid") == 0 || strcmp(pa->type, "clsid") == 0);
 
-                if (strcmp(pa->dir, "out")==0 || strcmp(pa->dir, "inout")==0) {
+                if (strcmp(pa->dir, "out") == 0 || strcmp(pa->dir, "inout") == 0) {
                     fprintf(fp, ", %s *%s", ct, pa->name);
                 } else if (is_128bit) {
-                    // NEU: ABI Fix - 128-Bit IDs immer by const reference
                     fprintf(fp, ", const %s *%s", ct, pa->name);
                 } else {
                     fprintf(fp, ", %s %s", ct, pa->name);
@@ -549,34 +664,47 @@ static void emit_interfaces(FILE *fp, const idl_file_t *f)
         }
         free((void*)marr);
 
-        fprintf(fp, "} %s_vtbl_t;\n\n", it->name);
-        fprintf(fp, "struct %s_s { const %s_vtbl_t *vtbl; };\n\n", it->name, it->name);
+        fprintf(fp, "} %s_%s_vtbl_t;\n\n", mod, clean_name);
+        
+        /* WICHTIG: Das eigentliche Objekt-Struct */
+        fprintf(fp, "struct %s_%s_s { const %s_%s_vtbl_t *vtbl; };\n\n", mod, clean_name, mod, clean_name);
     }
 
-    /* Helpers */
+    /* 3. Helper functions */
     ln(fp, "/* Helper functions */");
-    for (int i=0;i<n;i++) {
+    
+    char mod_up[256];
+    to_upper_ident(mod, mod_up);
+
+    for (int i = 0; i < n; i++) {
         const idl_interface_t *it = arr[i];
         if (!it->name) continue;
 
+        /* Namen bereinigen */
+        char clean_name[256];
+        format_ident(it->name, clean_name, sizeof(clean_name));
+
         fprintf(fp,
             "/** Releases and nulls the pointer (COM-style). */\n"
-            "static inline void %s_releasep(%s_t **p)\n"
+            "static inline void %s_%s_releasep(%s_%s_t **p)\n"
             "{\n"
-            "    if (p && *p) { (*p)->vtbl->base.release((i_unknown_t *)*p); *p = NULL; }\n"
-            "}\n\n", it->name, it->name);
-
+            "    if (p && *p) {\n"
+            "        ncom_iunknown_t *unk = (ncom_iunknown_t *)(*p);\n"
+            "        unk->vtbl->release(unk);\n"
+            "        *p = NULL;\n"
+            "    }\n"
+            "}\n\n", mod, clean_name, mod, clean_name);
         char up[256];
-        to_upper_ident(it->name, up);
+        to_upper_ident(clean_name, up);
 
         fprintf(fp,
-            "/** Queries the requested interface from an i_unknown. */\n"
-            "static inline status_t qi_%s(i_unknown_t *from, %s_t **out)\n"
+            "/** Queries the requested interface from an ncom_iunknown_t. */\n"
+            "static inline ncom_status_t %s_%s_qi(ncom_iunknown_t *from, %s_%s_t **out)\n"
             "{\n"
             "    if (out) *out = NULL;\n"
-            "    if (!from || !out) return STATUS_E_INVALID_ARG;\n"
-            "    return from->vtbl->query_interface(from, &IID_%s, (void **)out);\n"
-            "}\n\n", it->name, it->name, up);
+            "    if (!from || !out) return NCOM_E_INVALID_ARG;\n"
+            "    return from->vtbl->query_interface(from, &%s_IID_%s, (void **)out);\n"
+            "}\n\n", mod, clean_name, mod, clean_name, mod_up, up);
     }
 
     free((void*)arr);
@@ -597,8 +725,10 @@ static int emit_module_header(const idl_file_t *f, const char *inc_dir)
     emit_structs(fp, f);
     emit_ids(fp, f);
     emit_interfaces(fp, f);
+    
+    /* FIX: Pass the AST object 'f', not the string 'mn'! */
+    emit_module_epilogue(fp, f); 
 
-    emit_module_epilogue(fp, mn);
     fclose(fp);
     return 1;
 }

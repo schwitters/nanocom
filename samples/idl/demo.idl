@@ -3,11 +3,11 @@ module demo {
   /**
    * @brief Logger interface.
    *
-   * The logger is reference-counted via i_unknown.
+   * The logger is reference-counted via ncom_iunknown.
    * Implementations define the meaning/range of @p level.
    */
   [uuid("993c054c-927a-4aac-9914-efaa9082efeb")]
-  interface i_logger : i_unknown {
+  interface i_logger : ncom_iunknown {
 
     /**
      * @brief Log a message.
@@ -21,18 +21,18 @@ module demo {
    * @brief Clock interface.
    *
    * Provides access to the current UNIX time in milliseconds.
-   * Inherits reference counting and query_interface from i_unknown.
+   * Inherits reference counting and query_interface from ncom_iunknown.
    */
   [uuid("e66873f3-0e9c-40ec-bc2a-aea32cee371c")]
-  interface i_clock : i_unknown {
+  interface i_clock : ncom_iunknown {
 
     /**
      * @brief Get current UNIX time in milliseconds.
      *
      * @param out_ms Receives the current time as milliseconds since UNIX epoch.
-     * @return status_t Success or failure code.
+     * @return ncom_status_t Success or failure code.
      */
-    status_t now_unix_ms(out int64 out_ms);
+    ncom_status_t now_unix_ms(out int64_t out_ms);
   };
   [uuid("d4671b09-cdb2-4f1a-b767-d0aedf041b93")]
   interface i_clock2 : i_clock {
@@ -47,8 +47,19 @@ module demo {
      * Ownership:
      * - If out_err is non-NULL and an error object is returned, the caller must release it.
      *
-     * @return status_t Success or failure code.
+     * @return ncom_status_t Success or failure code.
      */
-    status_t now_unix_ms(out int64 out_ms, [optional] out i_error_info out_err);
+    ncom_status_t now_unix_ms(out int64_t out_ms, [optional] out i_error_info out_err);
   };
+  
+  /**
+     * @brief The main sample component implementing logger and clock features.
+     */
+    [uuid("f7166ba2-c59f-489c-8d1a-6fd97c917a53")]
+    coclass sample_component {
+        interface i_logger;
+        interface i_clock;
+        interface i_clock2;
+    };
+  
 };
