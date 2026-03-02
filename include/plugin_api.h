@@ -1,13 +1,13 @@
 #pragma once
 #include <stdint.h>
 #include "nano_status.h"
-#include "nano_ids.h"
+#include "nano_base.h"
 
 /* Plugin API v1:
    The host loads a shared library and looks up PLUGIN_GET_API_V1_SYMBOL.
    The returned table stays valid until the library is unloaded. */
 
-typedef status_t (*create_instance_fn)(clsid_t clsid, iid_t iid, void **out);
+typedef status_t (*create_instance_fn)(const nanoc_clsid_t *clsid, const nanoc_iid_t *iid, void **out);
 
 typedef struct plugin_api_v1_s {
     uint32_t abi_version;         /* must be 1 */

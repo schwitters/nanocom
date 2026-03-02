@@ -4,13 +4,9 @@
 
 #include "nano_style.h"
 #include "plugin_loader.h"
-#include "helpers.h"
-#include "nano_ids.h"
-#include "i_logger.h"
-#include "i_clock.h"
-#include "i_clock2.h"
-#include "i_error_info.h"
-#include "i_string.h"
+#include "nano_base.h"
+
+
 
 static void default_plugin_path(char *buf, size_t cap)
 {

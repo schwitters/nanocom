@@ -189,6 +189,7 @@ static const char *map_prim(const char *t)
     else if (strcmp(p, "long")==0) mapped = is_unsigned ? "uint32_t" : "int32_t";
     else if (strcmp(p, "long long")==0) mapped = is_unsigned ? "uint64_t" : "int64_t";
     else if (strcmp(p, "uuid")==0) mapped = "nanoc_iid_t";
+	else if (strcmp(p, "clsid")==0) mapped = "nanoc_clsid_t";
     else if (strcmp(p, "void_ptr")==0) mapped = "void*";
     else if (strcmp(p, "const_char_ptr")==0) mapped = "const char*";
     else if (strcmp(p, "string_view")==0) mapped = "nano_string_view_t";
@@ -464,7 +465,7 @@ static void emit_ids(FILE *fp, const idl_file_t *f)
         char up[256];
         to_upper_ident(it->name, up);
 
-        fprintf(fp, "static const iid_t IID_%s = { 0x%016llxULL, 0x%016llxULL };\n",
+        fprintf(fp, "static const nanoc_iid_t IID_%s = { 0x%016llxULL, 0x%016llxULL };\n",
                 up, (unsigned long long)hi, (unsigned long long)lo);
     }
 
@@ -529,9 +530,15 @@ static void emit_interfaces(FILE *fp, const idl_file_t *f)
                 }
 
                 const char *ct = map_type(f, pa->type);
+                
+                //128-Bit ID-Types
+                int is_128bit = (strcmp(pa->type, "uuid") == 0 || strcmp(pa->type, "clsid") == 0);
 
                 if (strcmp(pa->dir, "out")==0 || strcmp(pa->dir, "inout")==0) {
                     fprintf(fp, ", %s *%s", ct, pa->name);
+                } else if (is_128bit) {
+                    // NEU: ABI Fix - 128-Bit IDs immer by const reference
+                    fprintf(fp, ", const %s *%s", ct, pa->name);
                 } else {
                     fprintf(fp, ", %s %s", ct, pa->name);
                 }
@@ -568,7 +575,7 @@ static void emit_interfaces(FILE *fp, const idl_file_t *f)
             "{\n"
             "    if (out) *out = NULL;\n"
             "    if (!from || !out) return STATUS_E_INVALID_ARG;\n"
-            "    return from->vtbl->query_interface(from, IID_%s, (void **)out);\n"
+            "    return from->vtbl->query_interface(from, &IID_%s, (void **)out);\n"
             "}\n\n", it->name, it->name, up);
     }
 

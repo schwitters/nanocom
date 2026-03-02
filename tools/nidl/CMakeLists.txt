@@ -33,6 +33,7 @@ if (NANO_USE_RE2C_LEMON)
     set(RE2C_BUILD_RE2HS OFF CACHE BOOL "" FORCE)
     set(RE2C_BUILD_RE2V OFF CACHE BOOL "" FORCE)
     set(RE2C_BUILD_RE2ZIG OFF CACHE BOOL "" FORCE)
+    set(RE2C_BUILD_RE2SWIFT OFF CACHE BOOL "" FORCE)
 
     FetchContent_Declare(re2c_src
       GIT_REPOSITORY https://github.com/skvadrik/re2c.git

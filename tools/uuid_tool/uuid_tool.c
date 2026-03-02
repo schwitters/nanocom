@@ -151,11 +151,11 @@ int main(int argc, char **argv)
         printf("[uuid(\"%s\")]\n", s);
 
         if (fixed_name) {
-            printf("static const iid_t   %s%s = { 0x%016llxULL, 0x%016llxULL };\n",
+            printf("static const nanoc_iid_t   %s%s = { 0x%016llxULL, 0x%016llxULL };\n",
                    prefix, fixed_name,
                    (unsigned long long)hi, (unsigned long long)lo);
         } else {
-            printf("static const iid_t   %s%04ld = { 0x%016llxULL, 0x%016llxULL };\n",
+            printf("static const nanoc_iid_t   %s%04ld = { 0x%016llxULL, 0x%016llxULL };\n",
                    prefix, i,
                    (unsigned long long)hi, (unsigned long long)lo);
         }

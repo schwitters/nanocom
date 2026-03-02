@@ -1,7 +1,6 @@
 #ifndef _NANO_BASE_H__
 #define _NANO_BASE_H__
 
-#include <nano_base.h>
 #include <nano_status.h>
 #include <stdint.h>
 
@@ -12,9 +11,21 @@ extern "C" {
 typedef struct nanoc_iid_s { uint64_t hi; uint64_t lo; }   nanoc_iid_t;
 typedef struct nanoc_clsid_s { uint64_t hi; uint64_t lo; } nanoc_clsid_t;
 
-#define NANOC_IID_EQ(A, B)   ((A).hi == (B).hi && (A).lo == (B).lo)
-#define NANOC_CLSID_EQ(A, B) ((A).hi == (B).hi && (A).lo == (B).lo)
-
+#define NANOC_IID_EQ(A, B)   ((A)->hi == (B)->hi && (A)->lo == (B)->lo)
+#define NANOC_CLSID_EQ(A, B) ((A)->hi == (B)->hi && (A)->lo == (B)->lo)
+/**
+ * @brief Type-safe QueryInterface macro for C.
+ * * Prevents dangerous `void**` casting errors by enforcing that `out_ptr` 
+ * is strictly of the correct type (i.e., `iface_name_t**`). It achieves 
+ * this by leveraging the specific `qi_*` helper functions created by 
+ * the IDL generator.
+ * * @param obj        The base interface pointer (e.g., an `i_unknown_t*`).
+ * @param iface_name The interface prefix/name (e.g., `i_clock`).
+ * @param out_ptr    The address of the target pointer (e.g., `&clk`).
+ * * @return status_t  STATUS_OK on success, or an error code otherwise.
+ */
+#define NANO_QI(obj, iface_name, out_ptr) \
+    qi_##iface_name((i_unknown_t*)(obj), (out_ptr))
 /**
  * @brief Status/return code type used by this ABI.
  * 
@@ -75,7 +86,7 @@ typedef struct string_view_s {
  * Encoding of written data is specified by the API using this buffer
  * (commonly UTF-8).
  */
-typedef struct char_buf_s {
+typedef struct nanoc_char_buf_s {
     /**
      * @brief Pointer to writable memory provided by the caller (may be NULL for sizing calls). 
      */
@@ -84,7 +95,7 @@ typedef struct char_buf_s {
      * @brief Capacity of @ref ptr in bytes (0 for sizing calls). 
      */
     uint64_t cap;
-} char_buf_t;
+} nanoc_char_buf_t;
 
 
 /* Interface IDs (IIDs) */
@@ -92,6 +103,7 @@ static const nanoc_iid_t IID_I_ERROR_INFO = { 0x758cd93d790a49bfULL, 0xa7868baf9
 static const nanoc_iid_t IID_I_STRING = { 0x7dcad1ee32974171ULL, 0xb36302fc16e42721ULL };
 static const nanoc_iid_t IID_I_LOGGER = { 0x6be9117fd60f449eULL, 0xbc4979a93dd83529ULL };
 static const nanoc_iid_t IID_I_UNKNOWN = { 0x589dfb30790e4b07ULL, 0x952a7857d37828dcULL };
+static const nanoc_iid_t IID_I_FACTORY = { 0x74751d837fe74171ULL, 0xb280525960783e1bULL };
 
 /* Class IDs (CLSIDs) */
 static const nanoc_clsid_t CLSID_NANO_COMPONENT = { 0x73bbc2c355194575ULL, 0x839ffa31da12bfabULL };
@@ -135,7 +147,6 @@ typedef struct i_error_info_s i_error_info_t;
 typedef struct i_factory_s i_factory_t;
 
 typedef struct i_unknown_vtbl_s {
-    i_unknown_vtbl_t base;
     /**
      * @brief Query for a supported interface on this object.
      * 
@@ -149,7 +160,7 @@ typedef struct i_unknown_vtbl_s {
      * 
      * @return status_t Success or failure code.
      */
-    status_t (*query_interface)(i_unknown_t *self, nanoc_iid_t iid, void* *out_iface);
+    status_t (*query_interface)(i_unknown_t *self, const nanoc_iid_t *iid, void* *out_iface);
     /**
      * @brief Increment the reference count.
      * 
@@ -243,7 +254,7 @@ typedef struct i_error_info_vtbl_s {
      * 
      * @return status_t Success or failure code.
      */
-    status_t (*get_message_buf)(i_error_info_t *self, nano_char_buf_t *buf, uint64_t *out_len_incl_nul);
+    status_t (*get_message_buf)(i_error_info_t *self, nanoc_char_buf_t *buf, uint64_t *out_len_incl_nul);
 } i_error_info_vtbl_t;
 
 struct i_error_info_s { const i_error_info_vtbl_t *vtbl; };
@@ -263,24 +274,26 @@ typedef struct i_factory_vtbl_s {
      * 
      * @return status_t Success or failure code.
      */
-    status_t (*create_instance)(i_factory_t *self, clsid clsid, nanoc_iid_t iid, void* *outptr);
+    status_t (*create_instance)(i_factory_t *self, const nanoc_clsid_t *clsid, nanoc_iid_t iid, void* *outptr);
 } i_factory_vtbl_t;
 
 struct i_factory_s { const i_factory_vtbl_t *vtbl; };
 
 /* Helper functions */
 /** Releases and nulls the pointer (COM-style). */
+/*
 static inline void i_unknown_releasep(i_unknown_t **p)
 {
     if (p && *p) { (*p)->vtbl->base.release((i_unknown_t *)*p); *p = NULL; }
 }
+*/
 
 /** Queries the requested interface from an i_unknown. */
 static inline status_t qi_i_unknown(i_unknown_t *from, i_unknown_t **out)
 {
     if (out) *out = NULL;
     if (!from || !out) return STATUS_E_INVALID_ARG;
-    return from->vtbl->query_interface(from, IID_I_UNKNOWN, (void **)out);
+    return from->vtbl->query_interface(from, &IID_I_UNKNOWN, (void **)out); // <-- & hinzugefügt
 }
 
 /** Releases and nulls the pointer (COM-style). */

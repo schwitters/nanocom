@@ -19,13 +19,13 @@ typedef struct sample_string_s {
     char *data; /* NUL-terminated UTF-8 */
 } sample_string_t;
 
-static status_t sample_string_qi(i_unknown_t *self_u, iid_t iid, void **out)
+static status_t sample_string_qi(i_unknown_t *self_u, nanoc_iid_t iid, void **out)
 {
     sample_string_t *s = (sample_string_t *)self_u;
     if (!out) return STATUS_E_INVALID_ARG;
     *out = NULL;
 
-    if (IID_EQ(iid, IID_I_UNKNOWN) || IID_EQ(iid, IID_I_STRING)) {
+    if (NANOC_IID_EQ(iid, IID_I_UNKNOWN) || NANOC_IID_EQ(iid, IID_I_STRING)) {
         *out = &s->iface;
         (void)nano_refcnt_inc(&s->ref_cnt);
         return STATUS_OK;
@@ -107,7 +107,7 @@ cleanup:
     return st;
 }
 
-/* ===== i_error_info implementation (plugin-owned) ===== */
+
 typedef struct sample_error_info_s {
     i_error_info_t iface;
     nano_refcnt_t ref_cnt;
@@ -115,13 +115,13 @@ typedef struct sample_error_info_s {
     char *msg; /* NUL-terminated UTF-8 */
 } sample_error_info_t;
 
-static status_t sample_error_qi(i_unknown_t *self_u, iid_t iid, void **out)
+static status_t sample_error_qi(i_unknown_t *self_u, nanoc_iid_t iid, void **out)
 {
     sample_error_info_t *e = (sample_error_info_t *)self_u;
     if (!out) return STATUS_E_INVALID_ARG;
     *out = NULL;
 
-    if (IID_EQ(iid, IID_I_UNKNOWN) || IID_EQ(iid, IID_I_ERROR_INFO)) {
+    if (NANOC_IID_EQ(iid, IID_I_UNKNOWN) || NANOC_IID_EQ(iid, IID_I_ERROR_INFO)) {
         *out = &e->iface;
         (void)nano_refcnt_inc(&e->ref_cnt);
         return STATUS_OK;
@@ -148,7 +148,7 @@ static uint32_t sample_error_release(i_unknown_t *self_u)
 
 static status_t sample_error_get_code(i_error_info_t *self, status_t *out_code)
 {
-    sample_error_info_t *e = (sample_error_info_t *)self;
+    const sample_error_info_t *e = (sample_error_info_t *)self;
     if (!out_code) return STATUS_E_INVALID_ARG;
     *out_code = e->code;
     return STATUS_OK;
@@ -156,7 +156,7 @@ static status_t sample_error_get_code(i_error_info_t *self, status_t *out_code)
 
 static status_t sample_error_get_message_cstr(i_error_info_t *self, const char **out_msg)
 {
-    sample_error_info_t *e = (sample_error_info_t *)self;
+    const sample_error_info_t *e = (sample_error_info_t *)self;
     if (!out_msg) return STATUS_E_INVALID_ARG;
     *out_msg = e->msg ? e->msg : "";
     return STATUS_OK;
@@ -174,7 +174,7 @@ static status_t sample_error_get_message_string(i_error_info_t *self, i_string_t
 /* Caller-buffer variant. out_len_incl_nul includes the NUL terminator. */
 static status_t sample_error_get_message_buf(i_error_info_t *self, char *buf, uint64_t cap, uint64_t *out_len_incl_nul)
 {
-    sample_error_info_t *e = (sample_error_info_t *)self;
+    const sample_error_info_t *e = (sample_error_info_t *)self;
     uint64_t need = 1;
     if (!out_len_incl_nul) return STATUS_E_INVALID_ARG;
 
@@ -256,7 +256,7 @@ static uint32_t sample_release(sample_component_t *impl)
 }
 
 /* --- i_unknown methods for logger view --- */
-static status_t sample_logger_qi(i_unknown_t *self_u, iid_t iid, void **out)
+static status_t sample_logger_qi(i_unknown_t *self_u, nanoc_iid_t iid, void **out)
 {
     sample_component_t *impl = (sample_component_t *)self_u; /* logger_iface is first -> same address */
     if (!out) return STATUS_E_INVALID_ARG;
@@ -267,7 +267,7 @@ static status_t sample_logger_qi(i_unknown_t *self_u, iid_t iid, void **out)
         (void)sample_add_ref(impl);
         return STATUS_OK;
     }
-    if (IID_EQ(iid, IID_I_CLOCK) || IID_EQ(iid, IID_I_CLOCK2)) {
+    if (NANOC_IID_EQ(iid, IID_I_CLOCK) || NANOC_IID_EQ(iid, IID_I_CLOCK2)) {
         *out = &impl->clock_iface;
         (void)sample_add_ref(impl);
         return STATUS_OK;
@@ -301,14 +301,14 @@ static sample_component_t *impl_from_clock(i_clock_t *self)
     return (sample_component_t *)((char *)self - offsetof(sample_component_t, clock_iface));
 }
 
-static status_t sample_clock_qi(i_unknown_t *self_u, iid_t iid, void **out)
+static status_t sample_clock_qi(i_unknown_t *self_u, nanoc_iid_t iid, void **out)
 {
     i_clock_t *self = (i_clock_t *)self_u;
     sample_component_t *impl = impl_from_clock(self);
     if (!out) return STATUS_E_INVALID_ARG;
     *out = NULL;
 
-    if (IID_EQ(iid, IID_I_UNKNOWN) || IID_EQ(iid, IID_I_CLOCK)) {
+    if (NANOC_IID_EQ(iid, IID_I_UNKNOWN) || NANOC_IID_EQ(iid, IID_I_CLOCK)) {
         *out = &impl->clock_iface;
         (void)sample_add_ref(impl);
         return STATUS_OK;
@@ -444,7 +444,7 @@ static const i_clock2_vtbl_t SAMPLE_CLOCK2_VTBL = {
 };
 
 
-static status_t sample_component_create(iid_t iid, void **out)
+static status_t sample_component_create(nanoc_iid_t iid, void **out)
 {
     status_t st = STATUS_OK;
     sample_component_t *impl = NULL;
@@ -478,15 +478,15 @@ static status_t sample_component_create(iid_t iid, void **out)
 }
 
 /* Plugin API create_instance: CLSID + IID */
-static status_t plugin_create_instance(clsid_t clsid, iid_t iid, void **out)
+static status_t plugin_create_instance(const nanoc_clsid_t *clsid, const nanoc_iid_t *iid, void **out)
 {
     if (!out) return STATUS_E_INVALID_ARG;
     *out = NULL;
 
-    if (!CLSID_EQ(clsid, CLSID_SAMPLE_COMPONENT)) {
+    if (!NANOC_CLSID_EQ(clsid, &CLSID_SAMPLE_COMPONENT)) {
         return STATUS_E_NOT_FOUND;
     }
-    return sample_component_create(iid, out);
+    return sample_component_create(iid, out); // sample_component_create muss auch const nanoc_iid_t* annehmen!
 }
 
 static void plugin_init_impl(void) { /* optional */ }

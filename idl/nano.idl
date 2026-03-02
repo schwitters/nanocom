@@ -190,6 +190,8 @@ module nano {
      */
     status_t get_message_buf(inout char_buf buf, out unsigned long long out_len_incl_nul);
   };
+  
+  [uuid("8850319e-c9d7-4541-b648-f2b0e63b05c8")]
   interface i_factory : i_unknown {
 
   /** Create an instance of a component (CLSID) and return a specific interface (IID).
