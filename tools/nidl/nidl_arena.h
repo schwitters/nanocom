@@ -24,6 +24,7 @@ arena_t *arena_create(void);
 void arena_destroy(arena_t *a);
 
 void *arena_alloc(arena_t *a, size_t n);
+void *arena_calloc(arena_t *arena, size_t count, size_t size);
 char *arena_strdup(arena_t *a, const char *s, size_t n);
 
 #endif /* NCOM_TOOLS_NIDL_NIDL_ARENA_H */

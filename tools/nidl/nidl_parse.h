@@ -16,10 +16,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "nidl_arena.h"
 #include "nidl_ast.h"
 
 /* Parse IDL source into an AST.
    Returns NULL on error. Errors are printed to stderr. */
-idl_file_t *nidl_parse(const char *src);
+idl_file_t *nidl_parse(arena_t *arena,const char *src);
 
 #endif /* NCOM_TOOLS_NIDL_NIDL_PARSE_H */

@@ -341,16 +341,6 @@ static void sort_interfaces_by_base(const idl_file_t *f, const idl_interface_t *
 }
 
 
-static const idl_coclass_t **coclasses_to_array(const idl_coclass_t *cc, int *out_n)
-{
-    int n=0; for (const idl_coclass_t *x=cc;x;x=x->next) n++;
-    *out_n = n;
-    if (n==0) return NULL;
-    const idl_coclass_t **arr = (const idl_coclass_t **)calloc((size_t)n, sizeof(*arr));
-    int i=n-1;
-    for (const idl_coclass_t *x=cc;x;x=x->next) arr[i--]=x;
-    return arr;
-}
 static const idl_method_t **methods_to_array(const idl_method_t *m, int *out_n)
 {
     int n=0;
@@ -401,17 +391,6 @@ static const char *map_type(const idl_file_t *f, const char *t)
     }
 
     return t;
-}
-
-static const char *format_user_type(const idl_file_t *f, const char *t) {
-    static char buf[256];
-    char clean_name[256];
-    
-    format_ident(t, clean_name, sizeof(clean_name));
-    
-    const char *mod = f->module_name ? f->module_name : "mod";
-    snprintf(buf, sizeof(buf), "%s_%s_t", mod, clean_name);
-    return buf;
 }
 
 static const char *vtbl_base_type(const idl_file_t *f, const idl_interface_t *it)

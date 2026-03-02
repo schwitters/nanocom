@@ -351,10 +351,8 @@ static void parse_interface(parser_t *p, const char *uuid, const char *doc)
     (void)expect(p, TOK_SEMI, "expected ';' after interface");
 }
 
-idl_file_t *nidl_parse(const char *src)
+idl_file_t *nidl_parse(arena_t *a,const char *src)
 {
-    arena_t *a = arena_create();
-    if (!a) return NULL;
 
     parser_t p;
     memset(&p, 0, sizeof(p));

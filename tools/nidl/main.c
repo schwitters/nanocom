@@ -23,11 +23,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include "nidl_arena.h"
 #include "nidl_parse.h"
 #include "nidl_codegen_c.h"
 
-static char *read_all(const char *path)
+static char *read_all(arena_t *a,const char *path)
 {
     FILE *fp = fopen(path, "rb");
     if (!fp) return NULL;
@@ -35,7 +35,7 @@ static char *read_all(const char *path)
     long n = ftell(fp);
     fseek(fp, 0, SEEK_SET);
     if (n < 0) { fclose(fp); return NULL; }
-    char *buf = (char *)calloc((size_t)n + 1, 1);
+    char *buf = (char *)arena_calloc(a,(size_t)n + 1, 1);
     if (!buf) { fclose(fp); return NULL; }
     if (fread(buf, 1, (size_t)n, fp) != (size_t)n) { fclose(fp); free(buf); return NULL; }
     fclose(fp);
@@ -49,14 +49,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "usage: nidlgen <input.idl> <out_dir>\n");
         return 2;
     }
-
-    char *src = read_all(argv[1]);
+    arena_t *a = arena_create();
+    char *src = read_all(a,argv[1]);
     if (!src) {
         fprintf(stderr, "nidlgen: failed to read %s\n", argv[1]);
         return 1;
     }
-
-    idl_file_t *ast = nidl_parse(src);
+    
+    idl_file_t *ast = nidl_parse(a,src);
     if (!ast) {
         fprintf(stderr, "nidlgen: parse failed\n");
         free(src);
@@ -70,6 +70,6 @@ int main(int argc, char **argv)
     }
 
     fprintf(stderr, "nidlgen: generated C headers into %s/include\n", argv[2]);
-    free(src);
+    arena_destroy(a);
     return 0;
 }

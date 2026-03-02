@@ -23,7 +23,7 @@
 #include "nidl_arena.h"
 #include <stdlib.h>
 #include <string.h>
-
+#include <stddef.h>
 struct arena_s {
     unsigned char *buf;
     size_t cap;
@@ -71,6 +71,33 @@ void *arena_alloc(arena_t *a, size_t n)
     memset(p, 0, aligned);
     a->len += aligned;
     return p;
+}
+static int mul_overflow_size(size_t a, size_t b, size_t *out)
+{
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_mul_overflow)
+    return __builtin_mul_overflow(a, b, out);
+#  endif
+#endif
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    if (a != 0 && b > (SIZE_MAX / a)) return 1;
+    *out = a * b;
+    return 0;
+#endif
+}
+
+void *arena_calloc(arena_t *arena, size_t count, size_t size)
+{
+    if (!arena) return NULL;
+
+    size_t n = 0;
+    if (count == 0 || size == 0) return NULL;
+    if (mul_overflow_size(count, size, &n)) return NULL;
+
+    /* arena_alloc already aligns and zero-fills */
+    return arena_alloc(arena, n);
 }
 
 char *arena_strdup(arena_t *a, const char *s, size_t n)
