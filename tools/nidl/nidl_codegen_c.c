@@ -21,6 +21,7 @@
  */
 
 #include "nidl_codegen_c.h"
+#include "nidl_arena.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -70,8 +71,9 @@ static void ln(FILE *fp, const char *s) { fputs(s, fp); fputc('\n', fp); }
 
 static int is_space(char c) { return c==' ' || c=='\t' || c=='\n'; }
 
-static void emit_doc(FILE *fp, const char *doc, int indent)
+static void emit_doc(arena_t* arena,FILE *fp, const char *doc, int indent)
 {
+    (void)arena;
     if (!doc || !doc[0]) return;
 
     /* Trim leading blank lines */
@@ -432,8 +434,9 @@ static const char *vtbl_base_type(const idl_file_t *f, const idl_interface_t *it
     return buf;
 }
 
-static void emit_module_preamble(FILE *fp, const char *module_name)
+static void emit_module_preamble(arena_t* arena,FILE *fp, const char *module_name)
 {
+    (void)arena;
     char up[256];
     to_upper_guard(module_name ? module_name : "MODULE", up);
 
@@ -450,8 +453,9 @@ static void emit_module_preamble(FILE *fp, const char *module_name)
     fputc('\n', fp);
 }
 
-static void emit_module_epilogue(FILE* fp, const idl_file_t* f)
+static void emit_module_epilogue(arena_t* arena,FILE* fp, const idl_file_t* f)
 {
+    (void)arena;
     const char* module_name = f->module_name ? f->module_name : "module";
 
     char mod_up[256];
@@ -490,20 +494,20 @@ static void emit_module_epilogue(FILE* fp, const idl_file_t* f)
     fprintf(fp, "#endif /* _NCOM_GENERATED_%s_H__ */\n", guard_up);
 }
 
-static void emit_typedefs(FILE *fp, const idl_file_t *f)
+static void emit_typedefs(arena_t* arena,FILE *fp, const idl_file_t *f)
 {
     int n=0;
     const idl_typedef_t **arr = typedefs_to_array(f->typedefs, &n);
     for (int i=0;i<n;i++) {
         const idl_typedef_t *td = arr[i];
         if (!td->alias || !td->target) continue;
-        emit_doc(fp, td->doc, 0);
+        emit_doc(arena,fp, td->doc, 0);
         fprintf(fp, "typedef %s %s;\n\n", map_type(f, td->target), td->alias);
     }
     free((void*)arr);
 }
 
-static void emit_structs(FILE *fp, const idl_file_t *f)
+static void emit_structs(arena_t* arena,FILE *fp, const idl_file_t *f)
 {
     int n=0;
     const idl_struct_t **arr = structs_to_array(f->structs, &n);
@@ -511,7 +515,7 @@ static void emit_structs(FILE *fp, const idl_file_t *f)
         const idl_struct_t *st = arr[i];
         if (!st->name) continue;
 
-        emit_doc(fp, st->doc, 0);
+        emit_doc(arena,fp, st->doc, 0);
         fprintf(fp, "typedef struct %s_s {\n", st->name);
 
         /* fields are stored reversed, normalize */
@@ -527,7 +531,7 @@ static void emit_structs(FILE *fp, const idl_file_t *f)
         for (int j=0;j<fn;j++) {
             const idl_struct_field_t *fl = farr[j];
             if (!fl->name || !fl->type) continue;
-            emit_doc(fp, fl->doc, 4);
+            emit_doc(arena,fp, fl->doc, 4);
             fprintf(fp, "    %s %s;\n", map_type(f, fl->type), fl->name);
         }
         free((void*)farr);
@@ -537,8 +541,9 @@ static void emit_structs(FILE *fp, const idl_file_t *f)
     free((void*)arr);
 }
 
-static void emit_ids(FILE *fp, const idl_file_t *f)
+static void emit_ids(arena_t* arena,FILE *fp, const idl_file_t *f)
 {
+    (void)arena;
     char mod_up[256];
     to_upper_ident(f->module_name ? f->module_name : "MOD", mod_up);
 
@@ -585,7 +590,7 @@ static int is_framework_iface(const char* t) {
            strcmp(t, "i_string") == 0 || 
            strcmp(t, "i_error_info") == 0;
 }
-static void emit_interfaces(FILE *fp, const idl_file_t *f)
+static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
 {
     int n = 0;
     const idl_interface_t **arr = interfaces_to_array(f->interfaces, &n);
@@ -602,7 +607,7 @@ static void emit_interfaces(FILE *fp, const idl_file_t *f)
         char clean_name[256];
         format_ident(it->name, clean_name, sizeof(clean_name));
 
-        emit_doc(fp, it->doc, 0);
+        emit_doc(arena,fp, it->doc, 0);
         fprintf(fp, "typedef struct %s_%s_s %s_%s_t;\n", mod, clean_name, mod, clean_name);
     }
     fputc('\n', fp);
@@ -630,7 +635,7 @@ static void emit_interfaces(FILE *fp, const idl_file_t *f)
              * um z.B. bei return types das 'i_' zu filtern! */
             const char *ret = map_type(f, m->ret_type);
 
-            emit_doc(fp, m->doc, 4);
+            emit_doc(arena,fp, m->doc, 4);
             
             /* WICHTIG: Hier muss clean_name für den 'self'-Pointer stehen! */
             fprintf(fp, "    %s (*%s)(%s_%s_t *self", ret, m->name, mod, clean_name);
@@ -711,30 +716,32 @@ static void emit_interfaces(FILE *fp, const idl_file_t *f)
     free((void*)arr);
 }
 
-static int emit_module_header(const idl_file_t *f, const char *inc_dir)
+static int emit_module_header(arena_t* arena,const idl_file_t *f, const char *inc_dir)
 {
     const char *mn = (f && f->module_name) ? f->module_name : "module";
-    char path[1024];
-    snprintf(path, sizeof(path), "%s/%s.h", inc_dir, mn);
+    size_t need = strlen(inc_dir) + 1 + strlen(mn) + 2; /* "/" + ".h" + NUL */
+    char *path = arena_alloc(arena, need);
+    if (!path) return -1;
+    snprintf(path, need, "%s/%s.h", inc_dir, mn);
 
     FILE *fp = fopen(path, "wb");
     if (!fp) return 0;
 
-    emit_module_preamble(fp, mn);
+    emit_module_preamble(arena,fp, mn);
 
-    emit_typedefs(fp, f);
-    emit_structs(fp, f);
-    emit_ids(fp, f);
-    emit_interfaces(fp, f);
+    emit_typedefs(arena,fp, f);
+    emit_structs(arena,fp, f);
+    emit_ids(arena,fp, f);
+    emit_interfaces(arena,fp, f);
     
     /* FIX: Pass the AST object 'f', not the string 'mn'! */
-    emit_module_epilogue(fp, f); 
+    emit_module_epilogue(arena,fp, f); 
 
     fclose(fp);
     return 1;
 }
 
-int codegen_c_headers(const idl_file_t *f, const char *out_dir)
+int codegen_c_headers(arena_t* arena,const idl_file_t *f, const char *out_dir)
 {
     if (!f || !out_dir) return 0;
 
@@ -745,7 +752,7 @@ int codegen_c_headers(const idl_file_t *f, const char *out_dir)
     if (!mkdir_p(inc_dir)) return 0;
 
     /* Single header per module */
-    if (!emit_module_header(f, inc_dir)) return 0;
+    if (!emit_module_header(arena,f, inc_dir)) return 0;
 
     return 1;
 }

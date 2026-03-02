@@ -63,7 +63,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!codegen_c_headers(ast, argv[2])) {
+    if (!codegen_c_headers(a,ast, argv[2])) {
         fprintf(stderr, "nidlgen: codegen failed\n");
         free(src);
         return 1;
