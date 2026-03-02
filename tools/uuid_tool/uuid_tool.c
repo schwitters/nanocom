@@ -1,3 +1,25 @@
+/*
+ * Copyright 2026 nano_com authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+/**
+ * @file uuid_tool.c
+ * @brief Uuid tool.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -9,6 +31,7 @@
   #include <bcrypt.h>
   #pragma comment(lib, "bcrypt.lib")
 #else
+  #include <sys/time.h> // gettimeofday
   #include <fcntl.h>
   #include <unistd.h>
 #endif
@@ -16,12 +39,11 @@ static uint64_t get_time_ms(void) {
 #ifdef _WIN32
     FILETIME ft;
     uint64_t time;
-    // Holt die Zeit in 100-Nanosekunden-Intervallen seit 1. Jan 1601
     GetSystemTimeAsFileTime(&ft);
     time = (((uint64_t)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
-    // Umrechnung in Unix-Epoche (1. Jan 1970) und Millisekunden
     return (time - 116444736000000000ULL) / 10000;
 #else
+  #include <sys/time.h> // gettimeofday
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (uint64_t)tv.tv_sec * 1000 + (uint64_t)tv.tv_usec / 1000;
@@ -32,6 +54,7 @@ static int get_random_bytes(uint8_t *buf, size_t n)
 #if defined(_WIN32)
     return BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)n, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0;
 #else
+  #include <sys/time.h> // gettimeofday
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd < 0) return 0;
     size_t off = 0;
@@ -63,13 +86,8 @@ static int uuid_v7(uint8_t out[16])
     out[3] = (uint8_t)(ms >> 16);
     out[4] = (uint8_t)(ms >> 8);
     out[5] = (uint8_t)ms;
-
-    // 4. Version setzen: 0111 (7) in die oberen 4 Bits von Byte 6
     out[6] = (uint8_t)((out[6] & 0x0F) | 0x70);
-
-    // 5. Variante setzen: 10 (RFC 4122) in die oberen 2 Bits von Byte 8
     out[8] = (uint8_t)((out[8] & 0x3F) | 0x80);
-
     return 1;
 }
 static void uuid_to_string(const uint8_t u[16], char out[37])
@@ -160,6 +178,5 @@ int main(int argc, char **argv)
                    (unsigned long long)hi, (unsigned long long)lo);
         }
     }
-
-    return 0;
+   return 0;
 }

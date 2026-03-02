@@ -1,21 +1,69 @@
-#pragma once
+/*
+ * Copyright 2026 nano_com authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * @file errors.h
+ * @brief ncom status codes and helpers (COM-style HRESULT analogue).
+ */
+#ifndef NCOM_ERRORS_H
+#define NCOM_ERRORS_H
+
 #include <ncom/types.h>
 
-#define NCOM_OK                 ((ncom_status_t)0)
-#define NCOM_E_FAIL             ((ncom_status_t)-1)
-#define NCOM_E_INVALID_ARG      ((ncom_status_t)-2)
-#define NCOM_E_NO_MEM           ((ncom_status_t)-3)
-#define NCOM_E_NOT_FOUND        ((ncom_status_t)-4)
-#define NCOM_E_NOT_IMPL         ((ncom_status_t)-5)
-#define NCOM_E_MORE_DATA        ((ncom_status_t)-6) 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#define NCOM_SUCCEEDED(ST)      ((ncom_status_t)(ST) >= 0)
-#define NCOM_FAILED(ST)         ((ncom_status_t)(ST) < 0)
+/**
+ * @defgroup ncom_errors Errors
+ * @brief Status codes returned by ncom functions.
+ * @{
+ */
 
+/** Operation completed successfully. */
+#define NCOM_OK            ((ncom_status_t)0)
 
-#define NCOM_CHECK(EXPR) \
-    do { \
-        st = (EXPR); \
-        if (NCOM_FAILED(st)) goto cleanup; \
-    } while (0)
-// ...
+/** Unspecified failure. */
+#define NCOM_E_FAIL        ((ncom_status_t)-1)
+
+/** One or more arguments are invalid. */
+#define NCOM_E_INVALID_ARG ((ncom_status_t)-2)
+
+/** Memory allocation failed. */
+#define NCOM_E_NO_MEM      ((ncom_status_t)-3)
+
+/** Requested object or entry was not found. */
+#define NCOM_E_NOT_FOUND   ((ncom_status_t)-4)
+
+/** Operation is not implemented. */
+#define NCOM_E_NOT_IMPL    ((ncom_status_t)-5)
+
+/** Output buffer too small; more data is available (use sizing-call pattern). */
+#define NCOM_E_MORE_DATA   ((ncom_status_t)-6)
+
+/** True if a status code indicates success (>= 0). */
+#define NCOM_SUCCEEDED(ST) ((ncom_status_t)(ST) >= 0)
+
+/** True if a status code indicates failure (< 0). */
+#define NCOM_FAILED(ST)    ((ncom_status_t)(ST) < 0)
+
+/** @} */
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* NCOM_ERRORS_H */

@@ -1,3 +1,25 @@
+/*
+ * Copyright 2026 nano_com authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+/**
+ * @file plugin_loader.c
+ * @brief Plugin loader.
+ */
+
 #include <ncom/plugin.h>
 #include <ncom/plugin_loader.h>
 #include <ncom/style.h>
@@ -12,7 +34,24 @@
 #else
   #include <dlfcn.h>
   struct ncom_plugin_handle_s { void *lib; const ncom_plugin_api_v1_t *api; };
-  static void *sym(void *lib, const char *name) { return dlsym(lib, name); }
+
+  // POSIX dlsym() returns a data pointer; converting it to a function pointer is
+  // technically not ISO C, but it is the standard POSIX pattern. We wrap it to
+  // keep the cast in one place and silence -Wpedantic in most toolchains.
+  static ncom_plugin_get_api_v1_fn ncom_sym_fnptr_get_api(void *lib, const char *name)
+  {
+      void *p = dlsym(lib, name);
+      ncom_plugin_get_api_v1_fn fn = NULL;
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+      fn = (ncom_plugin_get_api_v1_fn)p;
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+      return fn;
+  }
 #endif
 
 ncom_status_t ncom_plugin_load(const char *path, ncom_plugin_handle_t **out_handle, const ncom_plugin_api_v1_t **out_api)
@@ -41,7 +80,11 @@ ncom_status_t ncom_plugin_load(const char *path, ncom_plugin_handle_t **out_hand
 #endif
 
     // Retrieve the strictly defined C entry point symbol
+#ifdef _WIN32
     get_api = (ncom_plugin_get_api_v1_fn)sym(h->lib, NCOM_PLUGIN_GET_API_V1_SYMBOL);
+#else
+    get_api = ncom_sym_fnptr_get_api(h->lib, NCOM_PLUGIN_GET_API_V1_SYMBOL);
+#endif
     if (!get_api) { st = NCOM_E_NOT_IMPL; goto cleanup; }
 
     api = get_api();

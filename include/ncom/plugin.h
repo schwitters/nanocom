@@ -1,4 +1,30 @@
-#pragma once
+/*
+ * Copyright 2026 nano_com authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * @file plugin.h
+ * @brief Plugin ABI: exported entrypoint, API table, and symbol visibility helpers.
+ *
+ * A plugin is a shared library that exports exactly one well-known symbol:
+ * @ref NCOM_PLUGIN_GET_API_V1_SYMBOL.
+ *
+ * The returned API table is treated as read-only and must have static storage duration.
+ */
+#ifndef NCOM_PLUGIN_H
+#define NCOM_PLUGIN_H
 
 #include <ncom/base.h>
 
@@ -6,115 +32,78 @@
 extern "C" {
 #endif
 
-	/**
-	 * @def NCOM_EXPORT
-	 * @brief Platform-independent macro to export symbols from a dynamic library.
-	 *
-	 * This macro ensures that the annotated function is exported by the compiler
-	 * and linker, making it visible and callable from outside the shared library
-	 * (e.g., a DLL on Windows, or an SO on Linux/POSIX).
-	 *
-	 * @note On Windows, this translates to __declspec(dllexport).
-	 * On GCC/Clang, it uses __attribute__((visibility("default"))).
-	 * It is highly recommended to compile POSIX libraries with the
-	 * `-fvisibility=hidden` flag so that *only* symbols marked with
-	 * NCOM_EXPORT are exposed.
-	 */
+/**
+ * @defgroup ncom_plugin Plugin ABI
+ * @brief Host↔plugin boundary types and conventions.
+ * @{
+ */
+
+/**
+ * @def NCOM_EXPORT
+ * @brief Export a symbol from a dynamic library.
+ *
+ * On POSIX, compile plugins with `-fvisibility=hidden` and annotate exported symbols
+ * with this macro.
+ */
 #if defined(_WIN32) || defined(__CYGWIN__)
-#define NCOM_EXPORT __declspec(dllexport)
+#  define NCOM_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__) && (__GNUC__ >= 4)
+#  define NCOM_EXPORT __attribute__((visibility("default")))
 #else
-#if defined(__GNUC__) && __GNUC__ >= 4
-#define NCOM_EXPORT __attribute__((visibility("default")))
-#else
-#define NCOM_EXPORT
-#endif
+#  define NCOM_EXPORT
 #endif
 
-	 /**
-	  * @def NCOM_PLUGIN_GET_API_V1_SYMBOL
-	  * @brief The exact string literal of the exported entry point symbol.
-	  *
-	  * The host application uses this string to resolve the entry point
-	  * via dlsym() (POSIX) or GetProcAddress() (Windows).
-	  */
+/**
+ * @def NCOM_PLUGIN_GET_API_V1_SYMBOL
+ * @brief Name of the mandatory plugin entrypoint symbol.
+ */
 #define NCOM_PLUGIN_GET_API_V1_SYMBOL "ncom_plugin_get_api_v1"
 
-	  /* ============================================================================
-	   * Plugin API Signatures
-	   * ============================================================================ */
+/** Optional initialization hook called immediately after the plugin is loaded. */
+typedef void (*ncom_plugin_init_fn)(void);
 
-	   /**
-		* @brief Optional initialization hook called immediately after the plugin is loaded.
-		*
-		* Plugins can use this hook to allocate global resources, start background
-		* threads, or initialize third-party libraries.
-		*/
-	typedef void (*ncom_plugin_init_fn)(void);
+/** Optional shutdown hook called right before the plugin is unloaded. */
+typedef void (*ncom_plugin_shutdown_fn)(void);
 
-	/**
-	 * @brief Optional shutdown hook called right before the plugin is unloaded.
-	 *
-	 * Plugins should use this hook to join threads, free global resources,
-	 * and ensure all outstanding handles are closed.
-	 */
-	typedef void (*ncom_plugin_shutdown_fn)(void);
+/**
+ * @brief Factory function signature for creating component instances.
+ *
+ * @param clsid Class identifier of the component to create.
+ * @param iid   Interface identifier requested from the created instance.
+ * @param out   Receives an AddRef'ed interface pointer on success.
+ */
+typedef ncom_status_t (*ncom_plugin_create_instance_fn)(
+    const ncom_clsid_t *clsid,
+    const ncom_iid_t   *iid,
+    void              **out
+);
 
-	/**
-	 * @brief Factory function signature for creating component instances.
-	 *
-	 * @param clsid The Class ID (CLSID) of the component to create.
-	 * @param iid   The Interface ID (IID) requested from the newly created instance.
-	 * @param out   Receives the requested interface pointer on success (AddRef'ed).
-	 *
-	 * @return ncom_status_t NCOM_OK on success, NCOM_E_NOT_FOUND if the CLSID
-	 * is unknown, or an appropriate error code.
-	 */
-	typedef ncom_status_t(*ncom_plugin_create_instance_fn)(
-		const ncom_clsid_t* clsid,
-		const ncom_iid_t* iid,
-		void** out
-		);
+/**
+ * @brief Plugin API function table (version 1).
+ *
+ * The host validates `abi_version` before calling any other function pointer.
+ */
+typedef struct ncom_plugin_api_v1_s {
+    uint32_t                      abi_version;     /**< Must be 1 for this layout. */
+    ncom_plugin_create_instance_fn create_instance; /**< Must not be NULL. */
+    ncom_plugin_init_fn            plugin_init;     /**< Optional; may be NULL. */
+    ncom_plugin_shutdown_fn        plugin_shutdown; /**< Optional; may be NULL. */
+} ncom_plugin_api_v1_t;
 
-	/**
-	 * @brief The v1 API function table exported by an ncom plugin.
-	 *
-	 * This table provides the host with the necessary function pointers
-	 * to interact with the plugin and instantiate its components without
-	 * knowing any of its internal implementation details.
-	 */
-	typedef struct {
-		/**
-		 * @brief ABI version of this structure. MUST be set to 1.
-		 */
-		uint32_t abi_version;
+/**
+ * @brief Signature of the exported plugin entrypoint.
+ *
+ * The plugin must export a function named @ref NCOM_PLUGIN_GET_API_V1_SYMBOL with
+ * this signature and annotate it with @ref NCOM_EXPORT.
+ *
+ * @return Pointer to a static, read-only @ref ncom_plugin_api_v1_t table.
+ */
+typedef const ncom_plugin_api_v1_t *(*ncom_plugin_get_api_v1_fn)(void);
 
-		/**
-		 * @brief Pointer to the instance creation function. MUST NOT be NULL.
-		 */
-		ncom_plugin_create_instance_fn create_instance;
-
-		/**
-		 * @brief Pointer to the initialization function. May be NULL.
-		 */
-		ncom_plugin_init_fn plugin_init;
-
-		/**
-		 * @brief Pointer to the shutdown function. May be NULL.
-		 */
-		ncom_plugin_shutdown_fn plugin_shutdown;
-	} ncom_plugin_api_v1_t;
-
-	/**
-	 * @brief The signature of the single exported entry point function.
-	 *
-	 * Every valid ncom plugin MUST implement a function matching this signature,
-	 * name it exactly as defined in NCOM_PLUGIN_GET_API_V1_SYMBOL, and export
-	 * it using the NCOM_EXPORT macro.
-	 *
-	 * @return const ncom_plugin_api_v1_t* A pointer to the static API table.
-	 */
-	typedef const ncom_plugin_api_v1_t* (*ncom_plugin_get_api_v1_fn)(void);
+/** @} */
 
 #ifdef __cplusplus
-}
+} /* extern "C" */
 #endif
+
+#endif /* NCOM_PLUGIN_H */

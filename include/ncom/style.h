@@ -1,69 +1,89 @@
-// In include/ncom/style.h
-
-#pragma once
-#include <ncom/errors.h>
-#include <ncom/error_info.h> // Für ncom_ierror_info_releasep
+/*
+ * Copyright 2026 nano_com authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /**
- * Goto-cleanup style helpers for ncom.
- * * REQUIRES: A local variable `ncom_status_t st = NCOM_OK;` in the calling scope,
- * and a label `cleanup:` at the end of the function.
+ * @file style.h
+ * @brief Convenience macros for "fail-fast" error handling in C (goto-cleanup pattern).
+ *
+ * These macros are optional but recommended for consistent control flow in ncom code.
+ * They follow the "happy path left" style: check, jump to cleanup, release resources.
+ */
+#ifndef NCOM_STYLE_H
+#define NCOM_STYLE_H
+
+#include <ncom/errors.h>
+#include <ncom/error_info.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @defgroup ncom_style Style helpers
+ * @brief Goto-cleanup macros for consistent, leak-free error handling.
+ *
+ * **Convention**
+ * - The calling function defines: `ncom_status_t st = NCOM_OK;`
+ * - The calling function has a `cleanup:` label near the end.
+ * - Resources are released in the `cleanup:` section.
+ * @{
  */
 
-/** * @brief Evaluates an expression, assigns it to 'st', and jumps to cleanup on failure. 
+/**
+ * @brief Evaluate @p EXPR, assign it to `st`, and jump to `cleanup` on failure.
  */
-#define NCOM_CHECK(EXPR)                                  \
-    do {                                                  \
-        st = (EXPR);                                      \
-        if (NCOM_FAILED(st)) goto cleanup;                \
-    } while (0)
+#define NCOM_CHECK(EXPR)                                      do {                                                         st = (EXPR);                                              if (NCOM_FAILED(st)) goto cleanup;                    } while (0)
 
-/** * @brief Checks if a pointer is NULL. If so, sets 'st' to INVALID_ARG and jumps to cleanup. 
+/**
+ * @brief If @p PTR is NULL, set `st` to @ref NCOM_E_INVALID_ARG and jump to `cleanup`.
  */
-#define NCOM_CHECK_NULL(PTR)                              \
-    do {                                                  \
-        if ((PTR) == NULL) {                              \
-            st = NCOM_E_INVALID_ARG;                      \
-            goto cleanup;                                 \
-        }                                                 \
-    } while (0)
+#define NCOM_CHECK_NULL(PTR)                                  do {                                                         if ((PTR) == NULL) {                                         st = NCOM_E_INVALID_ARG;                                  goto cleanup;                                         }                                                    } while (0)
 
-/** * @brief Safely transfers ownership of a temporary pointer to an out-parameter.
- * * This prevents memory leaks if the function fails halfway through and jumps
- * to cleanup, because the temporary pointer is only handed over right before 
- * a successful return.
+/**
+ * @brief Commit a temporary pointer into an out parameter and NULL the temporary.
+ *
+ * Typical usage:
+ * @code
+ * ncom_foo_t *tmp = create_foo();
+ * ...
+ * NCOM_COMMIT_OUT(out_foo, tmp);
+ * @endcode
  */
-#define NCOM_COMMIT_OUT(OUT_PTR, TMP_PTR)                 \
-    do {                                                  \
-        *(OUT_PTR) = (TMP_PTR);                           \
-        (TMP_PTR) = NULL;                                 \
-    } while (0)
+#define NCOM_COMMIT_OUT(OUT_PTR, TMP_PTR)                     do {                                                         *(OUT_PTR) = (TMP_PTR);                                   (TMP_PTR) = NULL;                                     } while (0)
 
-
-/* ===== Rich error handling helpers =====
- * Convention:
- * - Functions supporting rich errors accept an OUT parameter: ncom_ierror_info_t **out_err
- * - Callee may set *out_err to a new error object (caller must release).
+/**
+ * @brief Like @ref NCOM_CHECK but intended for APIs that may populate an error object.
+ *
+ * The macro does not modify @p ERR; it only prevents "unused parameter" warnings in
+ * call sites where an error object is optional.
  */
+#define NCOM_CHECK_ERR(EXPR, ERR)                             do {                                                         (void)(ERR);                                              st = (EXPR);                                              if (NCOM_FAILED(st)) goto cleanup;                    } while (0)
 
-/** * @brief Like NCOM_CHECK(), but meant for calls where an error object might be populated.
- * Jumps to cleanup on failure. 
+/**
+ * @brief Release any existing error object in @p ERR, then evaluate @p EXPR.
+ *
+ * On failure, the function jumps to `cleanup`. This macro is useful when a function
+ * performs multiple operations and you only want to keep the most recent rich error.
  */
-#define NCOM_CHECK_ERR(EXPR, ERR)                         \
-    do {                                                  \
-        (void)(ERR); /* Suppress unused warning */        \
-        st = (EXPR);                                      \
-        if (NCOM_FAILED(st)) goto cleanup;                \
-    } while (0)
+#define NCOM_CHECK_SET_ERR(EXPR, ERR)                         do {                                                         ncom_ierror_info_releasep(&(ERR));                        (ERR) = NULL;                                             st = (EXPR);                                              if (NCOM_FAILED(st)) goto cleanup;                    } while (0)
 
-/** * @brief Prepares an error pointer by releasing any old error, then runs EXPR.
- * Jumps to cleanup on failure.
- * * REQUIRES: A local variable `ncom_ierror_info_t *ERR = NULL;`
- */
-#define NCOM_CHECK_SET_ERR(EXPR, ERR)                     \
-    do {                                                  \
-        ncom_ierror_info_releasep(&(ERR));                \
-        (ERR) = NULL;                                     \
-        st = (EXPR);                                      \
-        if (NCOM_FAILED(st)) goto cleanup;                \
-    } while (0)
+/** @} */
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* NCOM_STYLE_H */

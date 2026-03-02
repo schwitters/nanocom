@@ -1,9 +1,31 @@
+/*
+ * Copyright 2026 nano_com authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+/**
+ * @file nano_tests.c
+ * @brief Nano tests.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 
-/* Die neue, aufgeräumte Framework-Welt */
+/* Die neue, aufgerÃ¤umte Framework-Welt */
 #include <ncom/ncom.h>
 #include <ncom/plugin_loader.h>
 
@@ -83,11 +105,11 @@ TEST_CASE(test_plugin_load_and_qi)
     CHECK(ncom_plugin_load(p, &ph, &api));
     ASSERT_NOT_NULL(api);
 
-    /* IIDs und CLSIDs werden nun By-Reference (mit &) übergeben */
+    /* IIDs und CLSIDs werden nun By-Reference (mit &) Ã¼bergeben */
     CHECK(api->create_instance(&DEMO_CLSID_SAMPLE_COMPONENT, &NCOM_IID_IUNKNOWN, (void**)&u));
     ASSERT_NOT_NULL(u);
 
-    /* Einheitliches Naming für QueryInterface Helper */
+    /* Einheitliches Naming fÃ¼r QueryInterface Helper */
     CHECK(demo_ilogger_qi(u, &log));
     CHECK(demo_iclock_qi(u, &clk));
     CHECK(demo_iclock2_qi(u, &clk2));
@@ -100,7 +122,7 @@ TEST_CASE(test_plugin_load_and_qi)
     ASSERT_TRUE(now_ms > 0);
 
 cleanup:
-    /* Einheitliches Naming für Release Helper */
+    /* Einheitliches Naming fÃ¼r Release Helper */
     demo_iclock2_releasep(&clk2);
     demo_iclock_releasep(&clk);
     demo_ilogger_releasep(&log);
