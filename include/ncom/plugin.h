@@ -96,6 +96,15 @@ typedef struct ncom_plugin_api_v1_s {
 } ncom_plugin_api_v1_t;
 
 /**
+ * @brief Signature of the exported plugin entrypoint.
+ *
+ * The host uses this function pointer type to cast the raw symbol address 
+ * returned by the OS loader (GetProcAddress/dlsym).
+ *
+ * @return Pointer to a static, read-only @ref ncom_plugin_api_v1_t table.
+ */
+typedef const ncom_plugin_api_v1_t *(*ncom_plugin_get_api_v1_fn)(void);
+/**
  * @brief The mandatory entry point for every ncom-compatible plugin.
  *
  * The host application will search for this specific function by name
