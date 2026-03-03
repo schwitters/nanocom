@@ -56,14 +56,23 @@ static int mkdir_p(const char *path)
     if (tmp[0] && !mkdir_one(tmp)) return 0;
     return 1;
 }
-static void format_ident(const char *in, char *out, size_t cap) {
-    if (!in) { 
-        if (cap > 0) out[0] = '\0'; 
-        return; 
+static void format_ident(const char* in, char* out, size_t cap) {
+    /* 1. Kugelsichere Pointer- und Kapazitätsprüfung */
+    if (!out || cap == 0) {
+        return;
     }
-    if (in[0] == 'i' && in[1] == '_') {
+
+    if (!in) {
+        out[0] = '\0';
+        return;
+    }
+
+    /* 2. Explizite Längenprüfung (Clean Code, leicht zu lesen) */
+    size_t len = strlen(in);
+    if (len >= 2 && in[0] == 'i' && in[1] == '_') {
         snprintf(out, cap, "i%s", in + 2);
-    } else {
+    }
+    else {
         snprintf(out, cap, "%s", in);
     }
 }
@@ -232,12 +241,17 @@ static const char *map_prim(const char *t)
     else if (strcmp(p, "clsid")==0) mapped = "ncom_clsid_t";
     else if (strcmp(p, "string_view")==0) mapped = "ncom_string_view_t";
     else if (strcmp(p, "char_buf")==0) mapped = "ncom_char_buf_t";
-    
+    else if (strcmp(p, "const_iid_ptr") == 0) mapped = "const ncom_iid_t*";
     /* ncom Framework Core Interfaces */
     else if (strcmp(p, "i_unknown")==0) mapped = "ncom_iunknown_t";
+    else if (strcmp(p, "ncom_iunknown") == 0) mapped = "ncom_iunknown_t";
+    else if (strcmp(p, "ncom_iunknown_ptr") == 0) mapped = "ncom_iunknown_t*";
     else if (strcmp(p, "i_factory")==0) mapped = "ncom_ifactory_t";
+    else if (strcmp(p, "ncom_ifactory") == 0) mapped = "ncom_ifactory_t";
     else if (strcmp(p, "i_string")==0) mapped = "ncom_istring_t";
+    else if (strcmp(p, "ncom_istring") == 0) mapped = "ncom_istring_t";
     else if (strcmp(p, "i_error_info")==0) mapped = "ncom_ierror_info_t";
+    else if (strcmp(p, "ncom_ierror_info") == 0) mapped = "ncom_ierror_info_t";
 
     if (!mapped) mapped = p;
 
@@ -387,8 +401,13 @@ static const char *map_type(const idl_file_t *f, const char *t)
     /* Known user structs or interfaces get the module prefix: module_type_t */
     if (is_struct_type(f, t) || is_interface_type(f, t)) {
         static char buf[256];
-        const char *mod = f->module_name ? f->module_name : "mod";
-        snprintf(buf, sizeof(buf), "%s_%s_t", mod, t);
+        const char* mod = f->module_name ? f->module_name : "mod";
+
+        /* FIX: Das 'i_' Präfix aus dem Typennamen sauber entfernen */
+        char clean_type[256];
+        format_ident(t, clean_type, sizeof(clean_type));
+
+        snprintf(buf, sizeof(buf), "%s_%s_t", mod, clean_type);
         return buf;
     }
 
@@ -660,6 +679,9 @@ static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
                     fprintf(fp, ", %s *%s", ct, pa->name);
                 } else if (is_128bit) {
                     fprintf(fp, ", const %s *%s", ct, pa->name);
+                } else if (is_iface) {
+                    /* FIX: Interfaces sind in C *immer* Pointer, auch bei 'in'! */
+                    fprintf(fp, ", %s *%s", ct, pa->name);
                 } else {
                     fprintf(fp, ", %s %s", ct, pa->name);
                 }

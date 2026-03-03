@@ -54,6 +54,9 @@ extern "C" {
 /** Output buffer too small; more data is available (use sizing-call pattern). */
 #define NCOM_E_MORE_DATA   ((ncom_status_t)-6)
 
+/** Interface not found */
+#define NCOM_E_NO_INTERFACE ((ncom_status_t)-7)
+
 /** True if a status code indicates success (>= 0). */
 #define NCOM_SUCCEEDED(ST) ((ncom_status_t)(ST) >= 0)
 
