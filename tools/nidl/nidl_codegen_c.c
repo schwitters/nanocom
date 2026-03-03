@@ -422,7 +422,7 @@ static const char *vtbl_base_type(const idl_file_t *f, const idl_interface_t *it
     }
 
     /* 4. User-Interfaces im aktuellen Modul (bekommen das Präfix) */
-    static char buf[256];
+    static char buf[512];
     char clean_base[256];
     
     // Die Funktion format_ident entfernt das "i_" (i_logger -> ilogger)
@@ -719,11 +719,11 @@ static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
 static int emit_module_header(arena_t* arena,const idl_file_t *f, const char *inc_dir)
 {
     const char *mn = (f && f->module_name) ? f->module_name : "module";
-    size_t need = strlen(inc_dir) + 1 + strlen(mn) + 2; /* "/" + ".h" + NUL */
+    size_t need = strlen(inc_dir) + 1 + strlen(mn) + 3; /* "/" + ".h" + NUL */
     char *path = arena_alloc(arena, need);
     if (!path) return -1;
     snprintf(path, need, "%s/%s.h", inc_dir, mn);
-
+    fprintf(stderr,"nidlgen: Writing file %s\n",path);
     FILE *fp = fopen(path, "wb");
     if (!fp) return 0;
 
