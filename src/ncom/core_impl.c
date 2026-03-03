@@ -50,7 +50,7 @@ static ncom_status_t string_qi(ncom_iunknown_t *self_u, const ncom_iid_t *iid, v
         ncom_refcnt_inc(&s->ref_cnt);
         return NCOM_OK;
     }
-    return NCOM_E_NOT_FOUND;
+    return NCOM_E_NO_INTERFACE;
 }
 
 static uint32_t string_add_ref(ncom_iunknown_t *self_u)
@@ -107,7 +107,10 @@ ncom_status_t ncom_create_string(const char *utf8, ncom_istring_t **out)
 
     if (!utf8) utf8 = "";
     n = strlen(utf8);
-
+    if (n > (SIZE_MAX - 1u)) { 
+        st = NCOM_E_NO_MEM; 
+        goto cleanup; 
+    }
     s = (ncom_string_impl_t *)calloc(1, sizeof(*s));
     if (!s) { st = NCOM_E_NO_MEM; goto cleanup; }
 
@@ -197,7 +200,8 @@ static ncom_status_t error_get_message_buf(ncom_ierror_info_t *self, ncom_char_b
     if (e->msg) need = (uint64_t)strlen(e->msg) + 1;
     *out_len_incl_nul = need;
 
-    if (!buf || buf->cap == 0) return NCOM_OK; /* sizing call */
+    /* sizing call: buf may be NULL, cap==0, or ptr==NULL */
+    if (!buf || buf->cap == 0 || !buf->ptr) return NCOM_OK;
     if (buf->cap < need) return NCOM_E_MORE_DATA;
 
     if (need == 1) { buf->ptr[0] = '\0'; return NCOM_OK; }
@@ -227,7 +231,10 @@ ncom_status_t ncom_create_error_info(ncom_status_t code, const char *msg, ncom_i
 
     if (!msg) msg = "";
     n = strlen(msg);
-
+    if (n > (SIZE_MAX - 1u)) { 
+        st = NCOM_E_NO_MEM; 
+        goto cleanup; 
+    }
     e = (ncom_error_info_impl_t *)calloc(1, sizeof(*e));
     if (!e) { st = NCOM_E_NO_MEM; goto cleanup; }
 

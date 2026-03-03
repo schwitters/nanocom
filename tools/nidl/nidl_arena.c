@@ -51,7 +51,12 @@ void arena_destroy(arena_t *a)
 static int arena_grow(arena_t *a, size_t need)
 {
     size_t new_cap = a->cap;
-    while (new_cap < need) new_cap *= 2;
+    while (new_cap < need) {
+      if (new_cap > (SIZE_MAX / 2u)) {
+        return 0; /* overflow guard */
+      }
+      new_cap *= 2u;
+    }
     unsigned char *nb = (unsigned char *)realloc(a->buf, new_cap);
     if (!nb) return 0;
     a->buf = nb;
@@ -62,8 +67,13 @@ static int arena_grow(arena_t *a, size_t need)
 void *arena_alloc(arena_t *a, size_t n)
 {
     if (!a || n == 0) return NULL;
+    
+    if (n > (SIZE_MAX - 7u)) return NULL;
     size_t aligned = (n + 7u) & ~7u;
+
+    if (aligned > (SIZE_MAX - a->len)) return NULL;
     size_t need = a->len + aligned;
+    
     if (need > a->cap) {
         if (!arena_grow(a, need)) return NULL;
     }
@@ -102,7 +112,8 @@ void *arena_calloc(arena_t *arena, size_t count, size_t size)
 
 char *arena_strdup(arena_t *a, const char *s, size_t n)
 {
-    char *p = (char *)arena_alloc(a, n + 1);
+    if (n > (SIZE_MAX - 1u)) return NULL;
+    char *p = (char *)arena_alloc(a, n + 1u);
     if (!p) return NULL;
     memcpy(p, s, n);
     p[n] = '\0';
