@@ -78,7 +78,7 @@ extern "C" {
  * On failure, the function jumps to `cleanup`. This macro is useful when a function
  * performs multiple operations and you only want to keep the most recent rich error.
  */
-#define NCOM_CHECK_SET_ERR(EXPR, ERR)                         do {                                                         ncom_ierror_info_releasep(&(ERR));                        (ERR) = NULL;                                             st = (EXPR);                                              if (NCOM_FAILED(st)) goto cleanup;                    } while (0)
+#define NCOM_CHECK_SET_ERR(EXPR, ERR)                         do {                                                         ncom_ierror_info_releasep(&(ERR));                        st = (EXPR);                                              if (NCOM_FAILED(st)) goto cleanup;                    } while (0)
 
 /** @} */
 

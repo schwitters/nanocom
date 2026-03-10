@@ -39,7 +39,7 @@ extern "C" {
  */
 
 /** IID of the ncom_istring_t interface. */
-static const ncom_iid_t NCOM_IID_ISTRING = { 0x7dcad1ee32974171ULL, 0xb36302fc16e42721ULL };
+extern const ncom_iid_t NCOM_IID_ISTRING;
 
 typedef struct ncom_istring_s ncom_istring_t;
 

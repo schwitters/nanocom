@@ -91,7 +91,7 @@ static ncom_status_t sample_common_qi(sample_component_t* impl,
     return NCOM_OK;
   }
 
-  return NCOM_E_NOT_FOUND;
+  return NCOM_E_NO_INTERFACE;
 }
 
 /* ============================================================================
@@ -295,7 +295,7 @@ static void plugin_shutdown_impl(void) { /* Optional cleanup logic */ }
 
 /* Exported single entry point (uses NCOM_EXPORT if defined in headers, or
  * default visibility) */
-NCOM_EXPORT const ncom_plugin_api_v1_t* ncom_plugin_get_api_v1(void) {
+NCOM_PLUGIN_EXPORT const ncom_plugin_api_v1_t* ncom_plugin_get_api_v1(void) {
   static const ncom_plugin_api_v1_t api = {
       .abi_version = 1,
       .create_instance = plugin_create_instance,

@@ -51,7 +51,16 @@ extern "C" {
 /** Operation is not implemented. */
 #define NCOM_E_NOT_IMPL    ((ncom_status_t)-5)
 
-/** Output buffer too small; more data is available (use sizing-call pattern). */
+/**
+ * @brief Output buffer too small; call again with a larger buffer.
+ *
+ * This code is returned by sizing-call APIs (e.g. get_message_buf()) when the
+ * caller-provided buffer is too small. The required size is written to the
+ * output length parameter even on this error.
+ *
+ * @warning NCOM_FAILED(NCOM_E_MORE_DATA) is true. Do NOT use NCOM_CHECK() around
+ *          sizing calls — handle NCOM_E_MORE_DATA explicitly as a non-fatal condition.
+ */
 #define NCOM_E_MORE_DATA   ((ncom_status_t)-6)
 
 /** Interface not found */

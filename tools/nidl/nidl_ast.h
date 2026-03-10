@@ -44,6 +44,8 @@ typedef struct idl_interface_s {
     const char *base;       /* optional base interface */
     const char *uuid;       /* uuid string literal */
     idl_method_t *methods;
+    int is_imported;        /* 1 if defined in an imported file (skip codegen) */
+    const char *source_module; /* module name where this interface was originally defined */
     struct idl_interface_s *next;
 } idl_interface_t;
 
@@ -58,6 +60,8 @@ typedef struct idl_struct_s {
     const char *doc;
     const char *name;
     idl_struct_field_t *fields;
+    int is_imported;        /* 1 if defined in an imported file (skip codegen) */
+    const char *source_module;
     struct idl_struct_s *next;
 } idl_struct_t;
 
@@ -75,12 +79,20 @@ typedef struct idl_coclass_s {
     struct idl_coclass_s *next;
 } idl_coclass_t;
 
+/* Record of a parsed import "path.idl" declaration. */
+typedef struct idl_import_s {
+    const char *path;        /* literal import path as written in the IDL */
+    const char *module_name; /* resolved module name of the imported file */
+    struct idl_import_s *next;
+} idl_import_t;
+
 typedef struct idl_file_s {
     const char *module_name;
     idl_typedef_t *typedefs;
     idl_struct_t *structs;
     idl_interface_t *interfaces;
     idl_coclass_t *coclasses;
+    idl_import_t *imports;   /* list of import "..." declarations */
 } idl_file_t;
 
 /* Allocation is done from a simple bump arena (see nidl_arena.c). */

@@ -27,6 +27,8 @@
 #include "nidl_parse.h"
 #include "nidl_codegen_c.h"
 
+#define MAX_INCLUDE_DIRS 64
+
 static char *read_all(arena_t *a,const char *path)
 {
     FILE *fp = fopen(path, "rb");
@@ -37,7 +39,7 @@ static char *read_all(arena_t *a,const char *path)
     if (n < 0) { fclose(fp); return NULL; }
     char *buf = (char *)arena_calloc(a,(size_t)n + 1, 1);
     if (!buf) { fclose(fp); return NULL; }
-    if (fread(buf, 1, (size_t)n, fp) != (size_t)n) { fclose(fp); free(buf); return NULL; }
+    if (fread(buf, 1, (size_t)n, fp) != (size_t)n) { fclose(fp); return NULL; } /* buf is arena-owned; caller destroys arena */
     fclose(fp);
     buf[n] = '\0';
     return buf;
@@ -46,26 +48,47 @@ static char *read_all(arena_t *a,const char *path)
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "usage: nidlgen <input.idl> <out_dir>\n");
+        fprintf(stderr, "usage: nidlgen <input.idl> <out_dir> [-I<dir>...]\n");
         return 2;
     }
+
+    /* Collect -I include directories from optional extra arguments. */
+    const char *include_dirs[MAX_INCLUDE_DIRS];
+    int n_include_dirs = 0;
+    for (int i = 3; i < argc; i++) {
+        if (argv[i][0] == '-' && argv[i][1] == 'I') {
+            const char *dir = (argv[i][2] != '\0') ? &argv[i][2]
+                              : (i + 1 < argc ? argv[++i] : NULL);
+            if (dir && n_include_dirs < MAX_INCLUDE_DIRS)
+                include_dirs[n_include_dirs++] = dir;
+        }
+    }
+
+    /* Build the import context; push the root file for cycle detection. */
+    nidl_include_ctx_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.include_dirs   = include_dirs;
+    ctx.n_include_dirs = n_include_dirs;
+    ctx.stack[ctx.stack_depth++] = argv[1];
+
     arena_t *a = arena_create();
-    char *src = read_all(a,argv[1]);
+    char *src = read_all(a, argv[1]);
     if (!src) {
         fprintf(stderr, "nidlgen: failed to read %s\n", argv[1]);
-        return 1;
-    }
-    
-    idl_file_t *ast = nidl_parse(a,src);
-    if (!ast) {
-        fprintf(stderr, "nidlgen: parse failed\n");
-        free(src);
+        arena_destroy(a);
         return 1;
     }
 
-    if (!codegen_c_headers(a,ast, argv[2])) {
+    idl_file_t *ast = nidl_parse(a, src, argv[1], &ctx);
+    if (!ast) {
+        fprintf(stderr, "nidlgen: parse failed\n");
+        arena_destroy(a);
+        return 1;
+    }
+
+    if (!codegen_c_headers(a, ast, argv[2])) {
         fprintf(stderr, "nidlgen: codegen failed\n");
-        free(src);
+        arena_destroy(a);
         return 1;
     }
 

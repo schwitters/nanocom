@@ -41,12 +41,12 @@ extern "C" {
  * All ncom interfaces "inherit" from IUnknown, i.e. their vtable begins with the
  * IUnknown vtable layout.
  */
-static const ncom_iid_t NCOM_IID_IUNKNOWN = { 0x589dfb30790e4b07ULL, 0x952a7857d37828dcULL };
+extern const ncom_iid_t NCOM_IID_IUNKNOWN;
 
 /**
  * @brief The canonical interface identifier for IFactory.
  */
-static const ncom_iid_t NCOM_IID_IFACTORY = { 0x74751d837fe74171ULL, 0xb280525960783e1bULL };
+extern const ncom_iid_t NCOM_IID_IFACTORY;
 
 typedef struct ncom_iunknown_s ncom_iunknown_t;
 

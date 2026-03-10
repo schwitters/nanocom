@@ -112,6 +112,7 @@ static tok_kind_t keyword(const char *p, uint32_t n)
     if (n==3 && memcmp(p,"int",3)==0) return TOK_INT_KW;
     if (n==4 && memcmp(p,"char",4)==0) return TOK_CHAR_KW;
     if (n==5 && memcmp(p,"octet",5)==0) return TOK_OCTET;
+    if (n==6 && memcmp(p,"import",6)==0) return TOK_IMPORT;
     return TOK_IDENT;
 }
 

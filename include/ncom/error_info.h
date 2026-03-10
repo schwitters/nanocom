@@ -38,7 +38,7 @@ extern "C" {
  */
 
 /** IID of the ncom_ierror_info_t interface. */
-static const ncom_iid_t NCOM_IID_IERRORINFO = { 0x758cd93d790a49bfULL, 0xa7868baf9b6a9285ULL };
+extern const ncom_iid_t NCOM_IID_IERRORINFO;
 
 typedef struct ncom_ierror_info_s ncom_ierror_info_t;
 

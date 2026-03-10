@@ -31,9 +31,21 @@
   #include <Windows.h>
   struct ncom_plugin_handle_s { HMODULE lib; const ncom_plugin_api_v1_t *api; };
   static void *sym(HMODULE lib, const char *name) { return (void *)GetProcAddress(lib, name); }
+  /* Map a LoadLibrary failure to NCOM_E_NOT_FOUND (file missing) or NCOM_E_FAIL (other). */
+  static ncom_status_t win_load_error(void) {
+      DWORD e = GetLastError();
+      return (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND || e == ERROR_MOD_NOT_FOUND)
+             ? NCOM_E_NOT_FOUND : NCOM_E_FAIL;
+  }
 #else
   #include <dlfcn.h>
+  #include <sys/stat.h>
   struct ncom_plugin_handle_s { void *lib; const ncom_plugin_api_v1_t *api; };
+  /* Map a dlopen failure to NCOM_E_NOT_FOUND (file missing) or NCOM_E_FAIL (other, e.g. missing deps). */
+  static ncom_status_t posix_load_error(const char *path) {
+      struct stat sb;
+      return (stat(path, &sb) != 0) ? NCOM_E_NOT_FOUND : NCOM_E_FAIL;
+  }
 
   // POSIX dlsym() returns a data pointer; converting it to a function pointer is
   // technically not ISO C, but it is the standard POSIX pattern. We wrap it to
@@ -73,10 +85,10 @@ ncom_status_t ncom_plugin_load(const char *path, ncom_plugin_handle_t **out_hand
 
 #ifdef _WIN32
     h->lib = LoadLibraryA(path);
-    if (!h->lib) { st = NCOM_E_NOT_FOUND; goto cleanup; }
+    if (!h->lib) { st = win_load_error(); goto cleanup; }
 #else
     h->lib = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-    if (!h->lib) { st = NCOM_E_NOT_FOUND; goto cleanup; }
+    if (!h->lib) { st = posix_load_error(path); goto cleanup; }
 #endif
 
     // Retrieve the strictly defined C entry point symbol
@@ -85,7 +97,7 @@ ncom_status_t ncom_plugin_load(const char *path, ncom_plugin_handle_t **out_hand
 #else
     get_api = ncom_sym_fnptr_get_api(h->lib, NCOM_PLUGIN_GET_API_V1_SYMBOL);
 #endif
-    if (!get_api) { st = NCOM_E_NOT_IMPL; goto cleanup; }
+    if (!get_api) { st = NCOM_E_FAIL; goto cleanup; } /* symbol not found: not a valid ncom plugin */
 
     api = get_api();
     if (!api || api->abi_version != 1 || !api->create_instance) {

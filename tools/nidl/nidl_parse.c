@@ -25,6 +25,7 @@
 #include "nidl_arena.h"
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 typedef struct parser_s {
     lexer_t *lx;
@@ -32,7 +33,79 @@ typedef struct parser_s {
     arena_t *a;
     idl_file_t *file;
     int had_error;
+    const char *src_path;       /* path to the file being parsed (for relative import resolution) */
+    nidl_include_ctx_t *ctx;    /* import resolution context */
 } parser_t;
+
+/* ---------- import helpers ------------------------------------------- */
+
+/* Read an entire file into a NUL-terminated arena-allocated buffer. */
+static char *read_file_src(arena_t *a, const char *path)
+{
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return NULL;
+    if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return NULL; }
+    long n = ftell(fp);
+    if (fseek(fp, 0, SEEK_SET) != 0 || n < 0) { fclose(fp); return NULL; }
+    char *buf = (char *)arena_calloc(a, (size_t)n + 1, 1);
+    if (!buf) { fclose(fp); return NULL; }
+    if (fread(buf, 1, (size_t)n, fp) != (size_t)n) { fclose(fp); return NULL; }
+    fclose(fp);
+    buf[n] = '\0';
+    return buf;
+}
+
+/* Resolve an import path to an existing file path (arena-allocated result).
+ * Search order: (1) relative to directory of src_path, (2) each include_dir. */
+static const char *resolve_import_path(arena_t *a,
+                                       const char *src_path,
+                                       const char *import_path,
+                                       const char **include_dirs,
+                                       int n_include_dirs)
+{
+    struct stat sb;
+
+    /* Absolute path: use as-is. */
+    if (import_path[0] == '/' || import_path[0] == '\\') {
+        if (stat(import_path, &sb) == 0)
+            return arena_strdup(a, import_path, strlen(import_path));
+        return NULL;
+    }
+
+    /* Relative to directory of the importing file. */
+    if (src_path) {
+        const char *last_sep = NULL;
+        for (const char *p = src_path; *p; p++)
+            if (*p == '/' || *p == '\\') last_sep = p;
+
+        if (last_sep) {
+            size_t dir_len = (size_t)(last_sep - src_path + 1);
+            size_t imp_len = strlen(import_path);
+            char *candidate = (char *)arena_alloc(a, dir_len + imp_len + 1);
+            if (!candidate) return NULL;
+            memcpy(candidate, src_path, dir_len);
+            memcpy(candidate + dir_len, import_path, imp_len + 1);
+            if (stat(candidate, &sb) == 0) return candidate;
+        } else {
+            /* src_path has no directory separator; try CWD-relative. */
+            if (stat(import_path, &sb) == 0)
+                return arena_strdup(a, import_path, strlen(import_path));
+        }
+    }
+
+    /* Search include directories. */
+    for (int i = 0; i < n_include_dirs; i++) {
+        size_t dir_len = strlen(include_dirs[i]);
+        size_t imp_len = strlen(import_path);
+        size_t total   = dir_len + 1 + imp_len + 1;
+        char *candidate = (char *)arena_alloc(a, total);
+        if (!candidate) return NULL;
+        snprintf(candidate, total, "%s/%s", include_dirs[i], import_path);
+        if (stat(candidate, &sb) == 0) return candidate;
+    }
+
+    return NULL;
+}
 
 static void next(parser_t *p) { p->t = lexer_next(p->lx); }
 
@@ -132,6 +205,109 @@ static void append_coclass(idl_file_t *f, idl_coclass_t *cc)
     f->coclasses = cc;
 }
 
+/* Forward declaration: nidl_parse is called recursively for imports. */
+static idl_file_t *nidl_parse_internal(arena_t *a, const char *src,
+                                       const char *src_path, nidl_include_ctx_t *ctx);
+
+/* Parse: import "path"; — resolves, reads, and merges an imported IDL file. */
+static void parse_import(parser_t *p)
+{
+    next(p); /* consume 'import' */
+    if (!is(p, TOK_STRING)) { err(p, "expected import path string"); return; }
+    const char *import_path = tok_str(p);
+    next(p);
+    (void)expect(p, TOK_SEMI, "expected ';' after import path");
+    if (p->had_error) return;
+
+    /* Resolve the path. */
+    const char **dirs = p->ctx ? p->ctx->include_dirs : NULL;
+    int ndirs         = p->ctx ? p->ctx->n_include_dirs : 0;
+    const char *resolved = resolve_import_path(p->a, p->src_path, import_path, dirs, ndirs);
+    if (!resolved) {
+        fprintf(stderr, "IDL import error at %u:%u: cannot find '%s'\n",
+                p->t.line, p->t.col, import_path);
+        p->had_error = 1;
+        return;
+    }
+
+    /* Cycle detection. */
+    if (p->ctx) {
+        for (int i = 0; i < p->ctx->stack_depth; i++) {
+            if (strcmp(p->ctx->stack[i], resolved) == 0) {
+                fprintf(stderr, "IDL import error: circular import '%s'\n", resolved);
+                p->had_error = 1;
+                return;
+            }
+        }
+    }
+
+    /* Read imported file. */
+    char *imp_src = read_file_src(p->a, resolved);
+    if (!imp_src) {
+        fprintf(stderr, "IDL import error: cannot read '%s'\n", resolved);
+        p->had_error = 1;
+        return;
+    }
+
+    /* Push resolved path onto cycle-detection stack, parse, pop. */
+    if (p->ctx && p->ctx->stack_depth < 32)
+        p->ctx->stack[p->ctx->stack_depth++] = resolved;
+
+    idl_file_t *imp_file = nidl_parse_internal(p->a, imp_src, resolved, p->ctx);
+
+    if (p->ctx && p->ctx->stack_depth > 0)
+        p->ctx->stack_depth--;
+
+    if (!imp_file) {
+        fprintf(stderr, "IDL import error: failed to parse '%s'\n", resolved);
+        p->had_error = 1;
+        return;
+    }
+
+    /* Merge imported interfaces (deduplicated, marked is_imported). */
+    for (idl_interface_t *it = imp_file->interfaces; it; ) {
+        idl_interface_t *next_it = it->next;
+        int found = 0;
+        for (idl_interface_t *ex = p->file->interfaces; ex; ex = ex->next) {
+            if (ex->name && it->name && strcmp(ex->name, it->name) == 0) {
+                found = 1; break;
+            }
+        }
+        if (!found) {
+            it->is_imported    = 1;
+            it->source_module  = imp_file->module_name;
+            it->next           = p->file->interfaces;
+            p->file->interfaces = it;
+        }
+        it = next_it;
+    }
+
+    /* Merge imported structs (deduplicated). */
+    for (idl_struct_t *st = imp_file->structs; st; ) {
+        idl_struct_t *next_st = st->next;
+        int found = 0;
+        for (idl_struct_t *ex = p->file->structs; ex; ex = ex->next) {
+            if (ex->name && st->name && strcmp(ex->name, st->name) == 0) {
+                found = 1; break;
+            }
+        }
+        if (!found) {
+            st->is_imported   = 1;
+            st->source_module = imp_file->module_name;
+            st->next          = p->file->structs;
+            p->file->structs  = st;
+        }
+        st = next_st;
+    }
+
+    /* Record the import for codegen (#include emission). */
+    idl_import_t *rec = (idl_import_t *)arena_alloc(p->a, sizeof(*rec));
+    rec->path        = import_path;
+    rec->module_name = imp_file->module_name;
+    rec->next        = p->file->imports;
+    p->file->imports = rec;
+}
+
 /* Parse: [uuid(...)] coclass name { };  (contents ignored for now) */
 static void parse_coclass(parser_t *p, const char *uuid, const char *doc)
 {
@@ -202,11 +378,16 @@ static const char *parse_type_spec(parser_t *p)
     while (is(p, TOK_STAR)) { next(p); ptrs++; }
 
     char buf[256];
-    buf[0] = 0;
-    if (qual) { strcat(buf, qual); strcat(buf, " "); }
-    if (sign) { strcat(buf, sign); strcat(buf, " "); }
-    strcat(buf, base);
-    for (int i=0;i<ptrs;i++) strcat(buf, " *");
+    snprintf(buf, sizeof(buf), "%s%s%s%s%s",
+             qual  ? qual  : "", qual  ? " " : "",
+             sign  ? sign  : "", sign  ? " " : "",
+             base);
+    /* append pointer stars safely */
+    for (int i = 0; i < ptrs; i++) {
+        size_t len = strlen(buf);
+        if (len + 3 >= sizeof(buf)) break;
+        buf[len] = ' '; buf[len+1] = '*'; buf[len+2] = '\0';
+    }
 
     return arena_strdup(p->a, buf, strlen(buf));
 }
@@ -343,23 +524,30 @@ static void parse_interface(parser_t *p, const char *uuid, const char *doc)
     append_interface(p->file, it);
 
     while (!is(p, TOK_RBRACE) && !is(p, TOK_EOF)) {
-		const char *mdoc = parse_doc_opt(p);
-        parse_method(p, it,mdoc);
+        const char *mdoc = parse_doc_opt(p);
+        parse_method(p, it, mdoc);
         if (p->had_error) return;
     }
     (void)expect(p, TOK_RBRACE, "expected '}' after interface");
     (void)expect(p, TOK_SEMI, "expected ';' after interface");
 }
 
-idl_file_t *nidl_parse(arena_t *a,const char *src)
+static idl_file_t *nidl_parse_internal(arena_t *a, const char *src,
+                                       const char *src_path, nidl_include_ctx_t *ctx)
 {
-
     parser_t p;
     memset(&p, 0, sizeof(p));
-    p.a = a;
-    p.lx = lexer_create(src);
-    p.file = (idl_file_t *)arena_alloc(a, sizeof(idl_file_t));
+    p.a        = a;
+    p.src_path = src_path;
+    p.ctx      = ctx;
+    p.lx       = lexer_create(src);
+    p.file     = (idl_file_t *)arena_alloc(a, sizeof(idl_file_t));
     next(&p);
+
+    /* import "path"; statements before the module block */
+    while (is(&p, TOK_IMPORT) && !p.had_error)
+        parse_import(&p);
+    if (p.had_error) goto fail;
 
     /* module <name> { ... }; */
     if (!is(&p, TOK_MODULE)) { err(&p, "expected 'module'"); goto fail; }
@@ -408,16 +596,21 @@ idl_file_t *nidl_parse(arena_t *a,const char *src)
     }
 
     lexer_destroy(p.lx);
+    p.lx = NULL; /* prevent double-free if had_error path is taken */
 
     if (p.had_error) goto fail;
 
-    /* NOTE: arena is intentionally leaked with the AST; caller should keep it alive.
-       For a production tool, return both AST + arena handle. Here we keep it simple:
-       The generator process exits after codegen, so this is fine. */
+    /* NOTE: arena is intentionally kept alive with the AST; the caller owns it. */
     return p.file;
 
 fail:
-    lexer_destroy(p.lx);
-    arena_destroy(a);
+    lexer_destroy(p.lx); /* safe: free(NULL) is a no-op */
+    /* Do NOT call arena_destroy — the arena is owned by the caller. */
     return NULL;
+}
+
+idl_file_t *nidl_parse(arena_t *a, const char *src,
+                       const char *src_path, nidl_include_ctx_t *ctx)
+{
+    return nidl_parse_internal(a, src, src_path, ctx);
 }

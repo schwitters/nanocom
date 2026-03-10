@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include <ncom/ncom.h>
 #include <ncom/plugin_loader.h>
@@ -76,9 +77,6 @@ int main(int argc, char **argv)
     /* Demonstrate rich error reporting: clock2 can return an error object. */
     st = clk2->vtbl->now_unix_ms(clk2, &now_ms, &err);
     if (NCOM_FAILED(st)) {
-        const char *cmsg = NULL;
-       
-
         /* Demonstrate i_string message retrieval. */
         if (err) {
             (void)err->vtbl->get_message_string(err, &err_str);
@@ -92,8 +90,7 @@ int main(int argc, char **argv)
         /* Demonstrate caller-provided buffer pattern (sizing call + copy). */
         if (err) {
             uint64_t need = 0;
-            ncom_char_buf_t buf;
-            buf.cap = 0;
+            ncom_char_buf_t buf = {0};
             (void)err->vtbl->get_message_buf(err, &buf, &need);
             if (need > 0 && need < 1024) {
                 buf.ptr = (char *)calloc(need, 1);
@@ -108,7 +105,7 @@ int main(int argc, char **argv)
     }
 
     char msg[128];
-    snprintf(msg, sizeof(msg), "clock.now_unix_ms = %lld", now_ms);
+    snprintf(msg, sizeof(msg), "clock.now_unix_ms = %" PRId64, now_ms);
     log->vtbl->log(log, 1, msg);
 
 cleanup:

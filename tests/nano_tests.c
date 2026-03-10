@@ -219,6 +219,7 @@ TEST_CASE(test_refcount_basic)
     /* Release clock view, then release logger view twice (for add_ref + initial). */
     rc = clk->vtbl->base.release((ncom_iunknown_t*)clk);
     ASSERT_TRUE(rc >= 1);
+    clk = NULL; /* prevent double-release in cleanup */
 
     rc = log->vtbl->base.release((ncom_iunknown_t*)log); /* undo add_ref */
     ASSERT_TRUE(rc >= 1);

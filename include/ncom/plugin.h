@@ -104,19 +104,6 @@ typedef struct ncom_plugin_api_v1_s {
  * @return Pointer to a static, read-only @ref ncom_plugin_api_v1_t table.
  */
 typedef const ncom_plugin_api_v1_t *(*ncom_plugin_get_api_v1_fn)(void);
-/**
- * @brief The mandatory entry point for every ncom-compatible plugin.
- *
- * The host application will search for this specific function by name
- * (defined by @ref NCOM_PLUGIN_GET_API_V1_SYMBOL) when loading the dynamic
- * library into memory. It must return a valid pointer to the plugin API v1
- * structure, which provides the factory function used to instantiate
- * the plugin's components.
- *
- * @return A constant pointer to the statically initialized ncom_plugin_api_v1_t structure.
- */
-NCOM_PLUGIN_EXPORT const ncom_plugin_api_v1_t* ncom_plugin_get_api_v1(void);
-
 /** @} */
 
 #ifdef __cplusplus

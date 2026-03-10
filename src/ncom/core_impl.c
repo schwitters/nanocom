@@ -29,6 +29,15 @@
 #include <string.h>
 
 /* ============================================================================
+ * IID Definitions (extern const declarations live in the public headers)
+ * ============================================================================ */
+
+const ncom_iid_t NCOM_IID_IUNKNOWN   = { 0x589dfb30790e4b07ULL, 0x952a7857d37828dcULL };
+const ncom_iid_t NCOM_IID_IFACTORY   = { 0x74751d837fe74171ULL, 0xb280525960783e1bULL };
+const ncom_iid_t NCOM_IID_ISTRING    = { 0x7dcad1ee32974171ULL, 0xb36302fc16e42721ULL };
+const ncom_iid_t NCOM_IID_IERRORINFO = { 0x758cd93d790a49bfULL, 0xa7868baf9b6a9285ULL };
+
+/* ============================================================================
  * Standard ncom_istring implementation
  * ============================================================================ */
 
@@ -72,16 +81,18 @@ static uint32_t string_release(ncom_iunknown_t *self_u)
 
 static ncom_status_t string_c_str(ncom_istring_t *self, const char **out_ptr)
 {
-    ncom_string_impl_t *s = NCOM_CONTAINER_OF(self, ncom_string_impl_t, iface);
     if (!out_ptr) return NCOM_E_INVALID_ARG;
+    if (!self) return NCOM_E_INVALID_ARG;
+    ncom_string_impl_t *s = NCOM_CONTAINER_OF(self, ncom_string_impl_t, iface);
     *out_ptr = s->data ? s->data : "";
     return NCOM_OK;
 }
 
 static ncom_status_t string_length(ncom_istring_t *self, uint64_t *out_len_bytes)
 {
-    ncom_string_impl_t *s = NCOM_CONTAINER_OF(self, ncom_string_impl_t, iface);
     if (!out_len_bytes) return NCOM_E_INVALID_ARG;
+    if (!self) return NCOM_E_INVALID_ARG;
+    ncom_string_impl_t *s = NCOM_CONTAINER_OF(self, ncom_string_impl_t, iface);
     *out_len_bytes = s->len_bytes;
     return NCOM_OK;
 }
@@ -153,7 +164,7 @@ static ncom_status_t error_qi(ncom_iunknown_t *self_u, const ncom_iid_t *iid, vo
         ncom_refcnt_inc(&e->ref_cnt);
         return NCOM_OK;
     }
-    return NCOM_E_NOT_FOUND;
+    return NCOM_E_NO_INTERFACE;
 }
 
 static uint32_t error_add_ref(ncom_iunknown_t *self_u)
@@ -183,11 +194,9 @@ static ncom_status_t error_get_code(ncom_ierror_info_t *self, ncom_status_t *out
 
 static ncom_status_t error_get_message_string(ncom_ierror_info_t *self, ncom_istring_t **out_str)
 {
-    ncom_error_info_impl_t *e = NCOM_CONTAINER_OF(self, ncom_error_info_impl_t, iface);
     if (out_str) *out_str = NULL;
     if (!self || !out_str) return NCOM_E_INVALID_ARG;
-    
-    // Create a new string object containing the error message
+    ncom_error_info_impl_t *e = NCOM_CONTAINER_OF(self, ncom_error_info_impl_t, iface);
     return ncom_create_string(e->msg ? e->msg : "", out_str);
 }
 

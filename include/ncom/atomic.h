@@ -33,17 +33,22 @@ extern "C" {
  *
  * On Windows (MSVC C), this header uses Interlocked operations.
  * On other platforms, it uses C11 `<stdatomic.h>`.
+ *
+ * @warning `ncom_refcnt_t` is platform-dependent in size and alignment.
+ *          It MUST NOT be used in structs that cross ABI boundaries
+ *          (e.g. as vtable parameters or in shared interface structs).
+ *          It is intended exclusively for internal object implementations.
  * @{
  */
 
 #ifdef _WIN32
 #  include <windows.h>
 
-/** Reference counter type (Windows). */
+/** Reference counter type (Windows, 32-bit). */
 typedef volatile LONG ncom_refcnt_t;
 
 /** Initialize reference counter. */
-static inline void ncom_refcnt_init(ncom_refcnt_t *rc, LONG v) { *rc = v; }
+static inline void ncom_refcnt_init(ncom_refcnt_t *rc, uint32_t v) { *rc = (LONG)v; }
 
 /** Increment reference counter; returns the new value. */
 static inline uint32_t ncom_refcnt_inc(ncom_refcnt_t *rc) { return (uint32_t)InterlockedIncrement(rc); }
@@ -54,11 +59,17 @@ static inline uint32_t ncom_refcnt_dec(ncom_refcnt_t *rc) { return (uint32_t)Int
 #else
 #  include <stdatomic.h>
 
-/** Reference counter type (C11 atomics). */
-typedef atomic_uint ncom_refcnt_t;
+/**
+ * @brief Reference counter type (C11 atomics, explicit 32-bit).
+ *
+ * `_Atomic uint32_t` is used instead of `atomic_uint` to guarantee a
+ * 32-bit counter on all platforms (C11 does not mandate that `unsigned int`
+ * is 32 bits, though it is in practice).
+ */
+typedef _Atomic uint32_t ncom_refcnt_t;
 
 /** Initialize reference counter. */
-static inline void ncom_refcnt_init(ncom_refcnt_t *rc, unsigned v) { atomic_init(rc, v); }
+static inline void ncom_refcnt_init(ncom_refcnt_t *rc, uint32_t v) { atomic_init(rc, v); }
 
 /** Increment reference counter; returns the new value. */
 static inline uint32_t ncom_refcnt_inc(ncom_refcnt_t *rc)

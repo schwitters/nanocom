@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdint.h>
 struct arena_s {
     unsigned char *buf;
     size_t cap;
@@ -84,12 +85,9 @@ void *arena_alloc(arena_t *a, size_t n)
 }
 static int mul_overflow_size(size_t a, size_t b, size_t *out)
 {
-#if defined(__has_builtin)
-#  if __has_builtin(__builtin_mul_overflow)
+#if defined(__has_builtin) && __has_builtin(__builtin_mul_overflow)
     return __builtin_mul_overflow(a, b, out);
-#  endif
-#endif
-#if defined(__GNUC__) || defined(__clang__)
+#elif defined(__GNUC__) && __GNUC__ >= 5
     return __builtin_mul_overflow(a, b, out);
 #else
     if (a != 0 && b > (SIZE_MAX / a)) return 1;

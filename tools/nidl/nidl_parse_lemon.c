@@ -43,9 +43,12 @@ typedef struct parse_ctx_s {
     int had_error;
 } parse_ctx_t;
 
-idl_file_t *nidl_parse(const char *src)
+/* NOTE: import "..." is not yet supported in the re2c/lemon code path. */
+idl_file_t *nidl_parse(arena_t *arena, const char *src,
+                       const char *src_path, nidl_include_ctx_t *ctx)
 {
-    arena_t *a = arena_create();
+    (void)src_path; (void)ctx;
+    arena_t *a = arena ? arena : arena_create();
     if (!a) return NULL;
 
     parse_ctx_t ctx;

@@ -54,6 +54,7 @@ typedef int tok_kind_t;
 #define TOK_OCTET      27
 #define TOK_STAR       28
 #define TOK_DOC        29
+#define TOK_IMPORT     30
 #endif
 
 typedef struct token_s {

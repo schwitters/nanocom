@@ -196,9 +196,10 @@ static void trim_spaces(const char *in, char out[256])
     out[n] = 0;
 }
 
-static const char *map_prim(const char *t)
+/* Returns a mapped C type string for a primitive/framework IDL type.
+ * Result is arena-allocated (no static buffer) so multiple results can coexist. */
+static const char *map_prim(arena_t *a, const char *t)
 {
-    static char buf[256];
     if (!t) return "void";
 
     char norm[256];
@@ -234,7 +235,7 @@ static const char *map_prim(const char *t)
     else if (strcmp(p, "long long")==0) mapped = is_unsigned ? "uint64_t" : "int64_t";
     else if (strcmp(p, "void_ptr")==0) mapped = "void*";
     else if (strcmp(p, "const_char_ptr")==0) mapped = "const char*";
-    
+
     /* ncom Framework Base Types */
     else if (strcmp(p, "status_t")==0) mapped = "ncom_status_t";
     else if (strcmp(p, "uuid")==0) mapped = "ncom_iid_t";
@@ -255,11 +256,14 @@ static const char *map_prim(const char *t)
 
     if (!mapped) mapped = p;
 
-    buf[0] = 0;
-    if (is_const) strncat(buf, "const ", sizeof(buf)-1);
-    strncat(buf, mapped, sizeof(buf)-1);
-    for (int i=0;i<ptrs;i++) strncat(buf, "*", sizeof(buf)-1);
-    return buf;
+    char buf[512];
+    {
+        char ptrbuf[32] = {0};
+        for (int i = 0; i < ptrs && i < 16; i++) ptrbuf[i] = '*';
+        snprintf(buf, sizeof(buf), "%s%s%s",
+                 is_const ? "const " : "", mapped, ptrbuf);
+    }
+    return arena_strdup(a, buf, strlen(buf));
 }
 
 static void to_upper_ident(const char *in, char out[256])
@@ -289,38 +293,30 @@ static void to_upper_guard(const char *in, char out[256])
     out[n] = '\0';
 }
 
-static const idl_typedef_t **typedefs_to_array(const idl_typedef_t *t, int *out_n)
+static const idl_typedef_t **typedefs_to_array(arena_t *a, const idl_typedef_t *t, int *out_n)
 {
     int n=0; for (const idl_typedef_t *x=t;x;x=x->next) n++;
     *out_n = n;
     if (n==0) return NULL;
-    const idl_typedef_t **arr = (const idl_typedef_t **)calloc((size_t)n, sizeof(*arr));
+    const idl_typedef_t **arr = (const idl_typedef_t **)arena_calloc(a, (size_t)n, sizeof(*arr));
+    if (!arr) { *out_n = 0; return NULL; }
     int i=n-1;
     for (const idl_typedef_t *x=t;x;x=x->next) arr[i--]=x;
     return arr;
 }
 
-static const idl_struct_t **structs_to_array(const idl_struct_t *s, int *out_n)
+static const idl_struct_t **structs_to_array(arena_t *a, const idl_struct_t *s, int *out_n)
 {
     int n=0; for (const idl_struct_t *x=s;x;x=x->next) n++;
     *out_n = n;
     if (n==0) return NULL;
-    const idl_struct_t **arr = (const idl_struct_t **)calloc((size_t)n, sizeof(*arr));
+    const idl_struct_t **arr = (const idl_struct_t **)arena_calloc(a, (size_t)n, sizeof(*arr));
+    if (!arr) { *out_n = 0; return NULL; }
     int i=n-1;
     for (const idl_struct_t *x=s;x;x=x->next) arr[i--]=x;
     return arr;
 }
 
-static const idl_interface_t **interfaces_to_array(const idl_interface_t *it, int *out_n)
-{
-    int n=0; for (const idl_interface_t *x=it;x;x=x->next) n++;
-    *out_n = n;
-    if (n==0) return NULL;
-    const idl_interface_t **arr = (const idl_interface_t **)calloc((size_t)n, sizeof(*arr));
-    int i=n-1;
-    for (const idl_interface_t *x=it;x;x=x->next) arr[i--]=x;
-    return arr;
-}
 
 static const idl_interface_t *find_interface(const idl_file_t *f, const char *name)
 {
@@ -357,113 +353,123 @@ static void sort_interfaces_by_base(const idl_file_t *f, const idl_interface_t *
 }
 
 
-static const idl_method_t **methods_to_array(const idl_method_t *m, int *out_n)
+static const idl_method_t **methods_to_array(arena_t *a, const idl_method_t *m, int *out_n)
 {
     int n=0;
     for (const idl_method_t *x=m; x; x=x->next) n++;
     *out_n = n;
     if (n==0) return NULL;
 
-    const idl_method_t **arr = (const idl_method_t **)calloc((size_t)n, sizeof(*arr));
+    const idl_method_t **arr = (const idl_method_t **)arena_calloc(a, (size_t)n, sizeof(*arr));
+    if (!arr) { *out_n = 0; return NULL; }
     int i = n-1;
     for (const idl_method_t *x=m; x; x=x->next) arr[i--] = x;
     return arr;
 }
 
-static const idl_param_t **params_to_array(const idl_param_t *p, int *out_n)
+static const idl_param_t **params_to_array(arena_t *a, const idl_param_t *p, int *out_n)
 {
     int n=0;
     for (const idl_param_t *x=p; x; x=x->next) n++;
     *out_n = n;
     if (n==0) return NULL;
 
-    const idl_param_t **arr = (const idl_param_t **)calloc((size_t)n, sizeof(*arr));
+    const idl_param_t **arr = (const idl_param_t **)arena_calloc(a, (size_t)n, sizeof(*arr));
+    if (!arr) { *out_n = 0; return NULL; }
     int i = n-1;
     for (const idl_param_t *x=p; x; x=x->next) arr[i--] = x;
     return arr;
 }
 
 
-static int is_struct_type(const idl_file_t *f, const char *t)
-{
-    for (const idl_struct_t *st = f->structs; st; st = st->next) {
-        if (st->name && strcmp(st->name, t) == 0) return 1;
-    }
-    return 0;
-}
-
-static const char *map_type(const idl_file_t *f, const char *t)
+/* Returns the C type string for any IDL type (primitive, framework, or user-defined).
+ * Result is arena-allocated; multiple results can coexist safely. */
+static const char *map_type(arena_t *a, const idl_file_t *f, const char *t)
 {
     /* Map primitives and framework types first */
-    const char *m = map_prim(t);
+    const char *m = map_prim(a, t);
     if (m && strcmp(m, t) != 0) return m;
 
-    /* Known user structs or interfaces get the module prefix: module_type_t */
-    if (is_struct_type(f, t) || is_interface_type(f, t)) {
-        static char buf[256];
-        const char* mod = f->module_name ? f->module_name : "mod";
+    /* User-defined interfaces: use source_module if imported */
+    for (const idl_interface_t *it = f->interfaces; it; it = it->next) {
+        if (it->name && strcmp(it->name, t) == 0) {
+            const char *mod = (it->source_module && it->source_module[0])
+                              ? it->source_module
+                              : (f->module_name ? f->module_name : "mod");
+            char clean_type[256];
+            format_ident(t, clean_type, sizeof(clean_type));
+            char buf[512];
+            snprintf(buf, sizeof(buf), "%s_%s_t", mod, clean_type);
+            return arena_strdup(a, buf, strlen(buf));
+        }
+    }
 
-        /* FIX: Das 'i_' Präfix aus dem Typennamen sauber entfernen */
-        char clean_type[256];
-        format_ident(t, clean_type, sizeof(clean_type));
-
-        snprintf(buf, sizeof(buf), "%s_%s_t", mod, clean_type);
-        return buf;
+    /* User-defined structs: use source_module if imported */
+    for (const idl_struct_t *st = f->structs; st; st = st->next) {
+        if (st->name && strcmp(st->name, t) == 0) {
+            const char *mod = (st->source_module && st->source_module[0])
+                              ? st->source_module
+                              : (f->module_name ? f->module_name : "mod");
+            char clean_type[256];
+            format_ident(t, clean_type, sizeof(clean_type));
+            char buf[512];
+            snprintf(buf, sizeof(buf), "%s_%s_t", mod, clean_type);
+            return arena_strdup(a, buf, strlen(buf));
+        }
     }
 
     return t;
 }
 
-static const char *vtbl_base_type(const idl_file_t *f, const idl_interface_t *it)
+/* Returns the vtable base type name for an interface's vtbl struct.
+ * Result for user-defined bases is arena-allocated. */
+static const char *vtbl_base_type(arena_t *a, const idl_file_t *f, const idl_interface_t *it)
 {
-    /* 1. Impliziter Fallback: Kein Base angegeben -> IUnknown */
+    /* 1. No base specified -> IUnknown */
     if (!it->base || it->base[0] == '\0') {
         return "ncom_iunknown_vtbl_t";
     }
-    
-    /* 2. Bypass für das wichtigste Basis-Interface (IUnknown) 
-     * Wir fangen hier sowohl das rohe IDL-Wort "i_unknown" als auch 
-     * ein potenzielles "ncom_iunknown" ab. */
-    if (strcmp(it->base, "i_unknown") == 0 || strcmp(it->base, "ncom_iunknown") == 0) {
+
+    /* 2. Framework base interfaces (fixed vtable names) */
+    if (strcmp(it->base, "i_unknown") == 0 || strcmp(it->base, "ncom_iunknown") == 0)
         return "ncom_iunknown_vtbl_t";
-    }
-
-    /* 3. Bypass für andere Framework Core-Interfaces (für den seltenen Fall, 
-     * dass jemand von i_string oder i_error_info erbt) */
-    if (strcmp(it->base, "i_string") == 0 || strcmp(it->base, "ncom_istring") == 0) {
+    if (strcmp(it->base, "i_string") == 0 || strcmp(it->base, "ncom_istring") == 0)
         return "ncom_istring_vtbl_t";
-    }
-    if (strcmp(it->base, "i_error_info") == 0 || strcmp(it->base, "ncom_ierror_info") == 0) {
+    if (strcmp(it->base, "i_error_info") == 0 || strcmp(it->base, "ncom_ierror_info") == 0)
         return "ncom_ierror_info_vtbl_t";
-    }
-    if (strcmp(it->base, "i_factory") == 0 || strcmp(it->base, "ncom_ifactory") == 0) {
+    if (strcmp(it->base, "i_factory") == 0 || strcmp(it->base, "ncom_ifactory") == 0)
         return "ncom_ifactory_vtbl_t";
-    }
 
-    /* 4. User-Interfaces im aktuellen Modul (bekommen das Präfix) */
-    static char buf[512];
+    /* 3. User-defined base interface (may be from an imported module) */
+    const idl_interface_t *base_it = find_interface(f, it->base);
+    const char *mod = (base_it && base_it->source_module && base_it->source_module[0])
+                      ? base_it->source_module
+                      : (f->module_name ? f->module_name : "mod");
     char clean_base[256];
-    
-    // Die Funktion format_ident entfernt das "i_" (i_logger -> ilogger)
     format_ident(it->base, clean_base, sizeof(clean_base));
-    
-    const char *mod = f->module_name ? f->module_name : "mod";
+    char buf[512];
     snprintf(buf, sizeof(buf), "%s_%s_vtbl_t", mod, clean_base);
-    
-    return buf;
+    return arena_strdup(a, buf, strlen(buf));
 }
 
-static void emit_module_preamble(arena_t* arena,FILE *fp, const char *module_name)
+static void emit_module_preamble(arena_t* arena, FILE *fp, const idl_file_t *f)
 {
     (void)arena;
+    const char *module_name = f->module_name ? f->module_name : "module";
     char up[256];
-    to_upper_guard(module_name ? module_name : "MODULE", up);
+    to_upper_guard(module_name, up);
 
-    fprintf(fp, "#ifndef _NCOM_GENERATED_%s_H__\n", up);
-    fprintf(fp, "#define _NCOM_GENERATED_%s_H__\n\n", up);
+    fprintf(fp, "#ifndef NCOM_GENERATED_%s_H\n", up);
+    fprintf(fp, "#define NCOM_GENERATED_%s_H\n\n", up);
 
     /* Include the core framework umbrella header */
     ln(fp, "#include <ncom/ncom.h>");
+
+    /* Include generated headers for imported modules */
+    for (const idl_import_t *imp = f->imports; imp; imp = imp->next) {
+        if (imp->module_name && imp->module_name[0])
+            fprintf(fp, "#include \"%s.h\"\n", imp->module_name);
+    }
     fputc('\n', fp);
 
     ln(fp, "#ifdef __cplusplus");
@@ -482,13 +488,18 @@ static void emit_module_epilogue(arena_t* arena,FILE* fp, const idl_file_t* f)
 
     fputc('\n', fp);
     ln(fp, "#ifdef __cplusplus");
-    ln(fp, "} /* extern \"C\" */\n");
+    ln(fp, "} /* extern \"C\" */");
+    fputc('\n', fp);
+    /* ncom_ptr.hpp defines ncom::iid_traits<T>; include explicitly so this
+     * header does not rely on ncom.h being included first in C++ TUs. */
+    ln(fp, "#include <ncom/ncom_ptr.hpp>");
+    fputc('\n', fp);
 
-    /* Generate C++ traits for type-safe query_interface (ncom::ptr) */
+    /* Generate C++ traits for type-safe query_interface (ncom::ptr<T>) */
     ln(fp, "namespace ncom {");
 
     for (const idl_interface_t* it = f->interfaces; it; it = it->next) {
-        if (!it->name) continue;
+        if (!it->name || it->is_imported) continue;
 
         /* 1. Das 'i_' Präfix entfernen (i_clock2 -> iclock2) */
         char clean_name[256];
@@ -510,26 +521,25 @@ static void emit_module_epilogue(arena_t* arena,FILE* fp, const idl_file_t* f)
     /* Close the include guard */
     char guard_up[256];
     to_upper_guard(module_name, guard_up);
-    fprintf(fp, "#endif /* _NCOM_GENERATED_%s_H__ */\n", guard_up);
+    fprintf(fp, "#endif /* NCOM_GENERATED_%s_H */\n", guard_up);
 }
 
 static void emit_typedefs(arena_t* arena,FILE *fp, const idl_file_t *f)
 {
     int n=0;
-    const idl_typedef_t **arr = typedefs_to_array(f->typedefs, &n);
+    const idl_typedef_t **arr = typedefs_to_array(arena, f->typedefs, &n);
     for (int i=0;i<n;i++) {
         const idl_typedef_t *td = arr[i];
         if (!td->alias || !td->target) continue;
         emit_doc(arena,fp, td->doc, 0);
-        fprintf(fp, "typedef %s %s;\n\n", map_type(f, td->target), td->alias);
+        fprintf(fp, "typedef %s %s;\n\n", map_type(arena, f, td->target), td->alias);
     }
-    free((void*)arr);
 }
 
 static void emit_structs(arena_t* arena,FILE *fp, const idl_file_t *f)
 {
     int n=0;
-    const idl_struct_t **arr = structs_to_array(f->structs, &n);
+    const idl_struct_t **arr = structs_to_array(arena, f->structs, &n);
     for (int i=0;i<n;i++) {
         const idl_struct_t *st = arr[i];
         if (!st->name) continue;
@@ -543,21 +553,21 @@ static void emit_structs(arena_t* arena,FILE *fp, const idl_file_t *f)
         for (const idl_struct_field_t *x=fld;x;x=x->next) fn++;
         const idl_struct_field_t **farr = NULL;
         if (fn>0) {
-            farr = (const idl_struct_field_t **)calloc((size_t)fn, sizeof(*farr));
-            int k=fn-1;
-            for (const idl_struct_field_t *x=fld;x;x=x->next) farr[k--]=x;
+            farr = (const idl_struct_field_t **)arena_calloc(arena, (size_t)fn, sizeof(*farr));
+            if (farr) {
+                int k=fn-1;
+                for (const idl_struct_field_t *x=fld;x;x=x->next) farr[k--]=x;
+            }
         }
         for (int j=0;j<fn;j++) {
             const idl_struct_field_t *fl = farr[j];
             if (!fl->name || !fl->type) continue;
             emit_doc(arena,fp, fl->doc, 4);
-            fprintf(fp, "    %s %s;\n", map_type(f, fl->type), fl->name);
+            fprintf(fp, "    %s %s;\n", map_type(arena, f, fl->type), fl->name);
         }
-        free((void*)farr);
 
         fprintf(fp, "} %s_t;\n\n", st->name);
     }
-    free((void*)arr);
 }
 
 static void emit_ids(arena_t* arena,FILE *fp, const idl_file_t *f)
@@ -567,7 +577,7 @@ static void emit_ids(arena_t* arena,FILE *fp, const idl_file_t *f)
     to_upper_ident(f->module_name ? f->module_name : "MOD", mod_up);
 
     for (const idl_interface_t *it = f->interfaces; it; it = it->next) {
-        if (!it->name || !it->uuid) continue;
+        if (!it->name || !it->uuid || it->is_imported) continue;
         uint8_t u[16];
         if (!parse_uuid_16(it->uuid, u)) continue;
         uint64_t hi, lo;
@@ -611,8 +621,18 @@ static int is_framework_iface(const char* t) {
 }
 static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
 {
+    /* Build array of local (non-imported) interfaces only. */
     int n = 0;
-    const idl_interface_t **arr = interfaces_to_array(f->interfaces, &n);
+    for (const idl_interface_t *x = f->interfaces; x; x = x->next)
+        if (!x->is_imported) n++;
+
+    const idl_interface_t **arr = NULL;
+    if (n > 0) {
+        arr = (const idl_interface_t **)calloc((size_t)n, sizeof(*arr));
+        int idx = n - 1;
+        for (const idl_interface_t *x = f->interfaces; x; x = x->next)
+            if (!x->is_imported) arr[idx--] = x;
+    }
     if (arr && n > 1) sort_interfaces_by_base(f, arr, n);
 
     const char *mod = f->module_name ? f->module_name : "mod";
@@ -643,27 +663,23 @@ static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
         fprintf(fp, "typedef struct %s_%s_vtbl_s {\n", mod, clean_name);
         
         /* Base interface vtbl */
-        fprintf(fp, "    %s base;\n", vtbl_base_type(f, it));
+        fprintf(fp, "    %s base;\n", vtbl_base_type(arena, f, it));
 
         int mcount = 0;
-        const idl_method_t **marr = methods_to_array(it->methods, &mcount);
+        const idl_method_t **marr = methods_to_array(arena, it->methods, &mcount);
         for (int mi = 0; mi < mcount; mi++) {
             const idl_method_t *m = marr[mi];
-            
-            /* map_type nutzt intern ebenfalls format_user_type, 
-             * um z.B. bei return types das 'i_' zu filtern! */
-            const char *ret = map_type(f, m->ret_type);
+
+            const char *ret = map_type(arena, f, m->ret_type);
 
             emit_doc(arena,fp, m->doc, 4);
-            
-            /* WICHTIG: Hier muss clean_name für den 'self'-Pointer stehen! */
             fprintf(fp, "    %s (*%s)(%s_%s_t *self", ret, m->name, mod, clean_name);
 
             int pcount = 0;
-            const idl_param_t **parr = params_to_array(m->params, &pcount);
+            const idl_param_t **parr = params_to_array(arena, m->params, &pcount);
             for (int pi = 0; pi < pcount; pi++) {
                 const idl_param_t *pa = parr[pi];
-                const char *ct = map_type(f, pa->type);
+                const char *ct = map_type(arena, f, pa->type);
 
                 int is_iface = is_interface_type(f, pa->type) || is_framework_iface(pa->type);
 
@@ -672,7 +688,7 @@ static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
                     continue;
                 }
 
-                int is_128bit = (pa->type != NULL) && 
+                int is_128bit = (pa->type != NULL) &&
                                 (strcmp(pa->type, "uuid") == 0 || strcmp(pa->type, "clsid") == 0);
 
                 if (strcmp(pa->dir, "out") == 0 || strcmp(pa->dir, "inout") == 0) {
@@ -680,17 +696,14 @@ static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
                 } else if (is_128bit) {
                     fprintf(fp, ", const %s *%s", ct, pa->name);
                 } else if (is_iface) {
-                    /* FIX: Interfaces sind in C *immer* Pointer, auch bei 'in'! */
                     fprintf(fp, ", %s *%s", ct, pa->name);
                 } else {
                     fprintf(fp, ", %s %s", ct, pa->name);
                 }
             }
-            free((void*)parr);
 
             fprintf(fp, ");\n");
         }
-        free((void*)marr);
 
         fprintf(fp, "} %s_%s_vtbl_t;\n\n", mod, clean_name);
         
@@ -734,8 +747,6 @@ static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
             "    return from->vtbl->query_interface(from, &%s_IID_%s, (void **)out);\n"
             "}\n\n", mod, clean_name, mod, clean_name, mod_up, up);
     }
-
-    free((void*)arr);
 }
 
 static int emit_module_header(arena_t* arena,const idl_file_t *f, const char *inc_dir)
@@ -749,7 +760,7 @@ static int emit_module_header(arena_t* arena,const idl_file_t *f, const char *in
     FILE *fp = fopen(path, "wb");
     if (!fp) return 0;
 
-    emit_module_preamble(arena,fp, mn);
+    emit_module_preamble(arena, fp, f);
 
     emit_typedefs(arena,fp, f);
     emit_structs(arena,fp, f);
