@@ -152,6 +152,17 @@ TEST(string_method_null_out_args)
     ncom_istring_releasep(&s);
 }
 
+TEST(string_qi_null_args)
+{
+    ncom_istring_t *s = NULL;
+    ncom_create_string("x", &s);
+
+    ASSERT(s->vtbl->base.query_interface((ncom_iunknown_t *)s, NULL, NULL) == NCOM_E_INVALID_ARG);
+    ASSERT(s->vtbl->base.query_interface(NULL, &NCOM_IID_ISTRING, NULL) == NCOM_E_INVALID_ARG);
+
+    ncom_istring_releasep(&s);
+}
+
 /* ============================================================================
  * ncom_create_error_info
  * ============================================================================ */
@@ -280,6 +291,29 @@ TEST(error_info_null_out_args)
     ncom_ierror_info_releasep(&e);
 }
 
+TEST(error_info_get_code_null_self)
+{
+    ncom_ierror_info_t *e = NULL;
+    ncom_create_error_info(NCOM_E_FAIL, "x", &e);
+    const ncom_ierror_info_vtbl_t *vtbl = e->vtbl;
+    ncom_ierror_info_releasep(&e);
+
+    ncom_status_t code = NCOM_OK;
+    ASSERT(vtbl->get_code(NULL, &code) == NCOM_E_INVALID_ARG);
+}
+
+TEST(error_info_get_message_buf_null_self)
+{
+    ncom_ierror_info_t *e = NULL;
+    ncom_create_error_info(NCOM_E_FAIL, "x", &e);
+    const ncom_ierror_info_vtbl_t *vtbl = e->vtbl;
+    ncom_ierror_info_releasep(&e);
+
+    uint64_t need = 0;
+    ncom_char_buf_t buf = { NULL, 0 };
+    ASSERT(vtbl->get_message_buf(NULL, &buf, &need) == NCOM_E_INVALID_ARG);
+}
+
 /* ============================================================================
  * IID identity (extern const – single definition across TUs)
  * ============================================================================ */
@@ -319,6 +353,7 @@ int main(void)
     RUN(string_qi_iunknown);
     RUN(string_method_null_self);
     RUN(string_method_null_out_args);
+    RUN(string_qi_null_args);
 
     printf("\n[ncom_create_error_info]\n");
     RUN(error_info_null_out_returns_invalid_arg);
@@ -330,6 +365,8 @@ int main(void)
     RUN(error_info_message_buf_too_small);
     RUN(error_info_get_message_string_null_self);
     RUN(error_info_null_out_args);
+    RUN(error_info_get_code_null_self);
+    RUN(error_info_get_message_buf_null_self);
 
     printf("\n[IID identity]\n");
     RUN(iid_values_are_unique);

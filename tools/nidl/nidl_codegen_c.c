@@ -57,7 +57,7 @@ static int mkdir_p(const char *path)
     return 1;
 }
 static void format_ident(const char* in, char* out, size_t cap) {
-    /* 1. Kugelsichere Pointer- und Kapazitätsprüfung */
+    /* 1) Defensive pointer and capacity validation. */
     if (!out || cap == 0) {
         return;
     }
@@ -67,7 +67,7 @@ static void format_ident(const char* in, char* out, size_t cap) {
         return;
     }
 
-    /* 2. Explizite Längenprüfung (Clean Code, leicht zu lesen) */
+    /* 2) Explicit length check for clear and predictable behavior. */
     size_t len = strlen(in);
     if (len >= 2 && in[0] == 'i' && in[1] == '_') {
         snprintf(out, cap, "i%s", in + 2);
@@ -501,15 +501,15 @@ static void emit_module_epilogue(arena_t* arena,FILE* fp, const idl_file_t* f)
     for (const idl_interface_t* it = f->interfaces; it; it = it->next) {
         if (!it->name || it->is_imported) continue;
 
-        /* 1. Das 'i_' Präfix entfernen (i_clock2 -> iclock2) */
+        /* 1) Remove the 'i_' prefix (i_clock2 -> iclock2). */
         char clean_name[256];
         format_ident(it->name, clean_name, sizeof(clean_name));
 
-        /* 2. In Großbuchstaben für die IID umwandeln (iclock2 -> ICLOCK2) */
+        /* 2) Convert to uppercase for IID constants (iclock2 -> ICLOCK2). */
         char up[256];
         to_upper_ident(clean_name, up);
 
-        /* 3. Sauber formatiert ausgeben! */
+        /* 3) Emit consistently formatted traits code. */
         fprintf(fp, "    template<> struct iid_traits<%s_%s_t> {\n", module_name, clean_name);
         fprintf(fp, "        static const ncom_iid_t* get() { return &%s_IID_%s; }\n", mod_up, up);
         fprintf(fp, "    };\n");
@@ -583,20 +583,20 @@ static void emit_ids(arena_t* arena,FILE *fp, const idl_file_t *f)
         uint64_t hi, lo;
         uuid_to_u64_pair(u, &hi, &lo);
 
-        /* 1. Bereinige den Namen: "i_logger" -> "ilogger" */
+        /* 1) Normalize name: "i_logger" -> "ilogger". */
         char clean_name[256];
         format_ident(it->name, clean_name, sizeof(clean_name));
 
-        /* 2. In Großbuchstaben umwandeln: "ilogger" -> "ILOGGER" */
+        /* 2) Convert to uppercase: "ilogger" -> "ILOGGER". */
         char up[256];
         to_upper_ident(clean_name, up);
 
-        /* 3. Generiert: static const ncom_iid_t DEMO_IID_ILOGGER = ... */
+        /* 3) Emit: static const ncom_iid_t DEMO_IID_ILOGGER = ... */
         fprintf(fp, "static const ncom_iid_t %s_IID_%s = { 0x%016llxULL, 0x%016llxULL };\n",
                 mod_up, up, (unsigned long long)hi, (unsigned long long)lo);
     }
     
-    /* Optional: Das Gleiche für CLSIDs, falls du coclasses in der IDL hast */
+    /* Optional: apply the same conversion for CLSIDs (coclasses). */
     for (const idl_coclass_t *cc = f->coclasses; cc; cc = cc->next) {
         if (!cc->name || !cc->uuid) continue;
         uint8_t u[16];
@@ -707,7 +707,7 @@ static void emit_interfaces(arena_t* arena,FILE *fp, const idl_file_t *f)
 
         fprintf(fp, "} %s_%s_vtbl_t;\n\n", mod, clean_name);
         
-        /* WICHTIG: Das eigentliche Objekt-Struct */
+        /* Important: concrete object struct that owns all interface views. */
         fprintf(fp, "struct %s_%s_s { const %s_%s_vtbl_t *vtbl; };\n\n", mod, clean_name, mod, clean_name);
     }
 

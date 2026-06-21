@@ -63,7 +63,7 @@ typedef struct ncom_ierror_info_vtbl_s {
      * @brief Get the error message into a caller-provided buffer (NUL-terminated).
      *
      * This method follows the sizing-call convention:
-     * - Call with `buf == NULL oder buf->ptr == NULL oder buf->cap == 0` to obtain the required size.
+     * - Call with `buf == NULL` or `buf->ptr == NULL` or `buf->cap == 0` to obtain the required size.
      * - Otherwise, provide a buffer and receive the message.
      *
      * @param self              Error object.

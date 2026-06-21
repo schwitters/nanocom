@@ -25,17 +25,60 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 #if defined(_WIN32)
   #define WIN32_LEAN_AND_MEAN
   #include <windows.h>
   #include <bcrypt.h>
   #pragma comment(lib, "bcrypt.lib")
 #else
-  #include <sys/time.h> // gettimeofday
+  #include <sys/time.h> /* gettimeofday */
   #include <fcntl.h>
   #include <unistd.h>
 #endif
-static uint64_t get_time_ms(void) {
+
+#define NCOM_UUID_COUNT_ENV   "NCOM_UUID_COUNT"
+#define NCOM_UUID_PREFIX_ENV  "NCOM_UUID_PREFIX"
+#define NCOM_UUID_NAME_ENV    "NCOM_UUID_NAME"
+#define NCOM_UUID_VERSION_ENV "NCOM_UUID_VERSION"
+
+static int parse_positive_long(const char *s, long *out)
+{
+    char *end = NULL;
+    long v = 0;
+
+    if (!s || !out) {
+        return 0;
+    }
+
+    errno = 0;
+    v = strtol(s, &end, 10);
+    if (errno != 0 || !end || *end != '\0' || v <= 0 || v > 100000) {
+        return 0;
+    }
+
+    *out = v;
+    return 1;
+}
+
+static int parse_uuid_version(const char *s, int *out_version)
+{
+    if (!s || !out_version) {
+        return 0;
+    }
+    if (strcmp(s, "4") == 0) {
+        *out_version = 4;
+        return 1;
+    }
+    if (strcmp(s, "7") == 0) {
+        *out_version = 7;
+        return 1;
+    }
+    return 0;
+}
+
+static uint64_t get_time_ms(void)
+{
 #ifdef _WIN32
     FILETIME ft;
     uint64_t time;
@@ -43,7 +86,6 @@ static uint64_t get_time_ms(void) {
     time = (((uint64_t)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
     return (time - 116444736000000000ULL) / 10000;
 #else
-  #include <sys/time.h> // gettimeofday
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (uint64_t)tv.tv_sec * 1000 + (uint64_t)tv.tv_usec / 1000;
@@ -54,7 +96,6 @@ static int get_random_bytes(uint8_t *buf, size_t n)
 #if defined(_WIN32)
     return BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)n, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0;
 #else
-  #include <sys/time.h> // gettimeofday
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd < 0) return 0;
     size_t off = 0;
@@ -114,35 +155,97 @@ static void uuid_to_u64_pair_be(const uint8_t u[16], uint64_t *hi, uint64_t *lo)
 static void usage(const char *exe)
 {
     fprintf(stderr,
-        "usage: %s <count> [--prefix IID_] [--name I_UNKNOWN]\n"
+        "usage: %s [<count>] [--prefix IID_] [--name I_UNKNOWN] [--version 4|7]\n"
+        "\n"
+        "Environment variables:\n"
+        "  %s     count fallback when <count> is omitted\n"
+        "  %s    fallback for --prefix\n"
+        "  %s      fallback for --name\n"
+        "  %s   fallback for --version (4 or 7)\n"
         "\n"
         "For each UUID prints two lines:\n"
         "  [uuid(\"...\")]\n"
-        "  static const iid_t   <PREFIX><NAME_OR_INDEX> = { 0x..ULL, 0x..ULL };\n",
-        exe);
+        "  static const ncom_iid_t <PREFIX><NAME_OR_INDEX> = { 0x..ULL, 0x..ULL };\n",
+        exe,
+        NCOM_UUID_COUNT_ENV,
+        NCOM_UUID_PREFIX_ENV,
+        NCOM_UUID_NAME_ENV,
+        NCOM_UUID_VERSION_ENV);
 }
 
 int main(int argc, char **argv)
 {
-    if (argc < 2) { usage(argv[0]); return 2; }
-
-    char *end = NULL;
-    long count = strtol(argv[1], &end, 10);
-    if (!end || *end != '\0' || count <= 0 || count > 100000) {
-        fprintf(stderr, "invalid count: %s\n", argv[1]);
-        return 2;
-    }
-
+    int argi = 1;
+    long count = 0;
     const char *prefix = "IID_";
     const char *fixed_name = NULL;
+    int uuid_version = 4;
 
-    for (int i = 2; i < argc; i++) {
-        if (strcmp(argv[i], "--prefix") == 0 && i + 1 < argc) {
+    if (argc >= 2 && (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)) {
+        usage(argv[0]);
+        return 0;
+    }
+
+    {
+        const char *env_prefix = getenv(NCOM_UUID_PREFIX_ENV);
+        const char *env_name = getenv(NCOM_UUID_NAME_ENV);
+        const char *env_version = getenv(NCOM_UUID_VERSION_ENV);
+
+        if (env_prefix && env_prefix[0] != '\0') {
+            prefix = env_prefix;
+        }
+        if (env_name && env_name[0] != '\0') {
+            fixed_name = env_name;
+        }
+        if (env_version && env_version[0] != '\0') {
+            if (!parse_uuid_version(env_version, &uuid_version)) {
+                fprintf(stderr, "invalid %s value: %s\n", NCOM_UUID_VERSION_ENV, env_version);
+                return 2;
+            }
+        }
+    }
+
+    if (argi < argc && argv[argi][0] != '-') {
+        if (!parse_positive_long(argv[argi], &count)) {
+            fprintf(stderr, "invalid count: %s\n", argv[argi]);
+            return 2;
+        }
+        argi++;
+    } else {
+        const char *env_count = getenv(NCOM_UUID_COUNT_ENV);
+        if (!parse_positive_long(env_count, &count)) {
+            fprintf(stderr, "missing or invalid count; pass <count> or set %s\n", NCOM_UUID_COUNT_ENV);
+            usage(argv[0]);
+            return 2;
+        }
+    }
+
+    for (int i = argi; i < argc; i++) {
+        if (strcmp(argv[i], "--prefix") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "--prefix requires a value\n");
+                return 2;
+            }
             prefix = argv[++i];
             continue;
         }
-        if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "--name") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "--name requires a value\n");
+                return 2;
+            }
             fixed_name = argv[++i];
+            continue;
+        }
+        if (strcmp(argv[i], "--version") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "--version requires a value (4 or 7)\n");
+                return 2;
+            }
+            if (!parse_uuid_version(argv[++i], &uuid_version)) {
+                fprintf(stderr, "invalid --version value: %s\n", argv[i]);
+                return 2;
+            }
             continue;
         }
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -155,7 +258,8 @@ int main(int argc, char **argv)
 
     for (long i = 1; i <= count; i++) {
         uint8_t u[16];
-        if (!uuid_v4(u)) {
+        int ok = (uuid_version == 7) ? uuid_v7(u) : uuid_v4(u);
+        if (!ok) {
             fprintf(stderr, "failed to generate random bytes\n");
             return 1;
         }
@@ -178,5 +282,5 @@ int main(int argc, char **argv)
                    (unsigned long long)hi, (unsigned long long)lo);
         }
     }
-   return 0;
+    return 0;
 }

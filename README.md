@@ -85,7 +85,7 @@ Just build it and run the demo once.
 From the repository root:
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build -DNCOM_BUILD_SAMPLES=ON -DNCOM_BUILD_TESTS=ON
 cmake --build build
 ```
 
@@ -101,7 +101,7 @@ cmake --build build
 The demo host loads the demo plugin and calls an interface exposed by it.
 
 ```bash
-./build/demo/ncom_demo_host
+./build/samples/host_app ./build/samples/libsample_plugin.so
 ```
 
 (Exact binary names may differ slightly depending on your generator/build options, but the build output will show you what was produced.)
@@ -196,9 +196,124 @@ Typical layout:
 
 * `include/ncom/` — public API headers
 * `src/ncom/` — runtime implementation
-* `demo/` — demo host and plugin
+* `samples/` — demo host and plugin
 * `tools/` — utilities (e.g. UUID tool, nidl generator)
 * `cmake/` — helper modules (if present)
+
+---
+
+## Build options
+
+Top-level CMake options:
+
+* `NCOM_BUILD_TOOLS` (default `ON`) — build `nidlgen` and `uuid_tool`
+* `NCOM_BUILD_SAMPLES` (default `OFF`) — build sample plugin + host
+* `NCOM_BUILD_TESTS` (default `OFF`) — build unit/integration tests
+* `NCOM_ENABLE_ASAN` (default `OFF`) — enable AddressSanitizer (GCC/Clang)
+* `NCOM_ENABLE_COVERAGE` (default `OFF`) — enable gcov/llvm-cov coverage flags (GCC/Clang)
+
+Run tests:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+Install library + headers:
+
+```bash
+cmake --install build --prefix /your/install/prefix
+```
+
+---
+
+## Tutorial: Versioned Plugin API
+
+This tutorial walks through the current `samples/idl/demo.idl` design, which demonstrates:
+
+* interface versioning (`i_logger` -> `i_logger2`)
+* explicit string-view APIs (`log_view`)
+* capability discovery (`i_capabilities`)
+* an IDL-level factory contract (`i_component_factory`)
+
+### 1) Inspect the IDL
+
+Open:
+
+* `samples/idl/demo.idl`
+
+Key ideas:
+
+* `i_logger` is the base logging interface.
+* `i_logger2 : i_logger` adds a versioned method without breaking old clients.
+* `i_capabilities` lets hosts probe API version and feature flags.
+* `i_component_factory` creates typed component instances via IID requests.
+
+### 2) Generate headers from IDL
+
+The build runs `nidlgen` automatically through CMake (`ncom_generate_headers(...)`).
+Generated headers for the sample targets are placed under:
+
+* `build/samples/generated_sample_plugin/include/demo.h`
+* `build/samples/generated_host_app/include/demo.h`
+
+### 3) Implement multiple interfaces in one component
+
+In `samples/sample_plugin.c`, a single object embeds multiple interface views:
+
+* `demo_ilogger_t`
+* `demo_ilogger2_t`
+* `demo_iclock_t`
+* `demo_iclock2_t`
+* `demo_icapabilities_t`
+
+`query_interface` maps each IID to the corresponding embedded view and enforces one identity (`IUnknown`).
+
+### 4) Use versioned interfaces from the host
+
+In `samples/host_app.c`, the host:
+
+1. creates `sample_component` as `IUnknown`
+2. queries `i_logger`, `i_logger2`, `i_clock`, `i_clock2`, and `i_capabilities`
+3. calls `i_logger2::log_view` for length-aware logging
+4. reads API/version flags from `i_capabilities`
+5. uses `sample_component_factory` + `i_component_factory` to create another object by IID
+
+### 5) Verify with tests
+
+Run:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+`tests/nano_tests.c` includes integration checks for:
+
+* interface querying
+* rich error paths (`i_clock2`)
+* capability probing
+* factory contract usage
+
+### Quick walkthrough (copy/paste)
+
+```bash
+cmake -S . -B build -DNCOM_BUILD_TOOLS=ON -DNCOM_BUILD_SAMPLES=ON -DNCOM_BUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Run the host demo:
+
+Linux:
+
+```bash
+./build/samples/host_app ./build/samples/libsample_plugin.so
+```
+
+macOS:
+
+```bash
+./build/samples/host_app ./build/samples/libsample_plugin.dylib
+```
 
 ---
 

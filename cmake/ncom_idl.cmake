@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Funktion: ncom_generate_headers
+# Function: ncom_generate_headers
 # Usage: ncom_generate_headers(TARGET my_plugin IDLS my_interface.idl another.idl)
 function(ncom_generate_headers)
     cmake_parse_arguments(ARG "" "TARGET" "IDLS" ${ARGN})
@@ -30,19 +30,19 @@ function(ncom_generate_headers)
     
     file(MAKE_DIRECTORY ${INC_DIR})
 
-    # Das Ziel-Verzeichnis automatisch als Include-Pfad für das Target setzen
+    # Add generated include directory to the target.
     target_include_directories(${ARG_TARGET} PRIVATE ${INC_DIR})
 
     foreach(IDL_FILE ${ARG_IDLS})
         get_filename_component(IDL_NAME ${IDL_FILE} NAME_WE)
         set(OUT_HEADER "${INC_DIR}/${IDL_NAME}.h")
 
-        # Wenn der Dateipfad nicht absolut ist, mache ihn absolut
+        # Normalize relative IDL paths to absolute paths.
         if(NOT IS_ABSOLUTE ${IDL_FILE})
             set(IDL_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${IDL_FILE}")
         endif()
 
-        # Custom Command, der nidlgen aufruft
+        # Generate header with nidlgen.
         add_custom_command(
             OUTPUT ${OUT_HEADER}
             COMMAND nidlgen ${IDL_FILE} ${OUT_DIR}
@@ -51,8 +51,7 @@ function(ncom_generate_headers)
             VERBATIM
         )
 
-        # Hänge den generierten Header an das Target, damit CMake weiß, 
-        # dass er vor dem Kompilieren des Targets erzeugt werden muss.
+        # Attach generated file as a source dependency so CMake builds it first.
         target_sources(${ARG_TARGET} PRIVATE ${OUT_HEADER})
     endforeach()
 endfunction()

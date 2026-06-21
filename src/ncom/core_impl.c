@@ -50,8 +50,9 @@ typedef struct {
 
 static ncom_status_t string_qi(ncom_iunknown_t *self_u, const ncom_iid_t *iid, void **out)
 {
-    ncom_string_impl_t *s = NCOM_CONTAINER_OF(self_u, ncom_string_impl_t, iface);
     if (!out) return NCOM_E_INVALID_ARG;
+    if (!self_u || !iid) return NCOM_E_INVALID_ARG;
+    ncom_string_impl_t *s = NCOM_CONTAINER_OF(self_u, ncom_string_impl_t, iface);
     *out = NULL;
 
     if (NCOM_IID_EQ(iid, &NCOM_IID_IUNKNOWN) || NCOM_IID_EQ(iid, &NCOM_IID_ISTRING)) {
@@ -64,12 +65,14 @@ static ncom_status_t string_qi(ncom_iunknown_t *self_u, const ncom_iid_t *iid, v
 
 static uint32_t string_add_ref(ncom_iunknown_t *self_u)
 {
+    if (!self_u) return 0;
     ncom_string_impl_t *s = NCOM_CONTAINER_OF(self_u, ncom_string_impl_t, iface);
     return ncom_refcnt_inc(&s->ref_cnt);
 }
 
 static uint32_t string_release(ncom_iunknown_t *self_u)
 {
+    if (!self_u) return 0;
     ncom_string_impl_t *s = NCOM_CONTAINER_OF(self_u, ncom_string_impl_t, iface);
     uint32_t rc = ncom_refcnt_dec(&s->ref_cnt);
     if (rc == 0) {
@@ -155,8 +158,9 @@ typedef struct {
 
 static ncom_status_t error_qi(ncom_iunknown_t *self_u, const ncom_iid_t *iid, void **out)
 {
-    ncom_error_info_impl_t *e = NCOM_CONTAINER_OF(self_u, ncom_error_info_impl_t, iface);
     if (!out) return NCOM_E_INVALID_ARG;
+    if (!self_u || !iid) return NCOM_E_INVALID_ARG;
+    ncom_error_info_impl_t *e = NCOM_CONTAINER_OF(self_u, ncom_error_info_impl_t, iface);
     *out = NULL;
 
     if (NCOM_IID_EQ(iid, &NCOM_IID_IUNKNOWN) || NCOM_IID_EQ(iid, &NCOM_IID_IERRORINFO)) {
@@ -169,12 +173,14 @@ static ncom_status_t error_qi(ncom_iunknown_t *self_u, const ncom_iid_t *iid, vo
 
 static uint32_t error_add_ref(ncom_iunknown_t *self_u)
 {
+    if (!self_u) return 0;
     ncom_error_info_impl_t *e = NCOM_CONTAINER_OF(self_u, ncom_error_info_impl_t, iface);
     return ncom_refcnt_inc(&e->ref_cnt);
 }
 
 static uint32_t error_release(ncom_iunknown_t *self_u)
 {
+    if (!self_u) return 0;
     ncom_error_info_impl_t *e = NCOM_CONTAINER_OF(self_u, ncom_error_info_impl_t, iface);
     uint32_t rc = ncom_refcnt_dec(&e->ref_cnt);
     if (rc == 0) {
@@ -186,8 +192,8 @@ static uint32_t error_release(ncom_iunknown_t *self_u)
 
 static ncom_status_t error_get_code(ncom_ierror_info_t *self, ncom_status_t *out_code)
 {
+    if (!self || !out_code) return NCOM_E_INVALID_ARG;
     ncom_error_info_impl_t *e = NCOM_CONTAINER_OF(self, ncom_error_info_impl_t, iface);
-    if (!out_code) return NCOM_E_INVALID_ARG;
     *out_code = e->code;
     return NCOM_OK;
 }
@@ -202,9 +208,9 @@ static ncom_status_t error_get_message_string(ncom_ierror_info_t *self, ncom_ist
 
 static ncom_status_t error_get_message_buf(ncom_ierror_info_t *self, ncom_char_buf_t *buf, uint64_t *out_len_incl_nul)
 {
+    if (!self || !out_len_incl_nul) return NCOM_E_INVALID_ARG;
     const ncom_error_info_impl_t *e = NCOM_CONTAINER_OF(self, ncom_error_info_impl_t, iface);
     uint64_t need = 1;
-    if (!out_len_incl_nul) return NCOM_E_INVALID_ARG;
 
     if (e->msg) need = (uint64_t)strlen(e->msg) + 1;
     *out_len_incl_nul = need;

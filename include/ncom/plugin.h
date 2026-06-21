@@ -94,6 +94,8 @@ typedef struct ncom_plugin_api_v1_s {
     ncom_plugin_init_fn            plugin_init;     /**< Optional; may be NULL. */
     ncom_plugin_shutdown_fn        plugin_shutdown; /**< Optional; may be NULL. */
 } ncom_plugin_api_v1_t;
+NCOM_STATIC_ASSERT(offsetof(ncom_plugin_api_v1_t, abi_version) == 0, "abi_version must be first");
+NCOM_STATIC_ASSERT(sizeof(((ncom_plugin_api_v1_t *)0)->abi_version) == 4, "abi_version must be 32-bit");
 
 /**
  * @brief Signature of the exported plugin entrypoint.

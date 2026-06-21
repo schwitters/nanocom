@@ -69,6 +69,8 @@ typedef struct ncom_iunknown_vtbl_s {
 struct ncom_iunknown_s {
     const ncom_iunknown_vtbl_t *vtbl;
 };
+NCOM_STATIC_ASSERT(offsetof(struct ncom_iunknown_s, vtbl) == 0, "IUnknown vtbl must be first");
+NCOM_STATIC_ASSERT(sizeof(struct ncom_iunknown_s) == sizeof(void *), "IUnknown must stay pointer-sized");
 
 /**
  * @brief Convenience wrapper for QueryInterface.
@@ -117,6 +119,8 @@ typedef struct ncom_ifactory_vtbl_s {
 struct ncom_ifactory_s {
     const ncom_ifactory_vtbl_t *vtbl;
 };
+NCOM_STATIC_ASSERT(offsetof(struct ncom_ifactory_s, vtbl) == 0, "IFactory vtbl must be first");
+NCOM_STATIC_ASSERT(sizeof(struct ncom_ifactory_s) == sizeof(void *), "IFactory must stay pointer-sized");
 
 /** @brief Release an IFactory pointer and set it to NULL (COM-style). */
 static inline void ncom_ifactory_releasep(ncom_ifactory_t **p)

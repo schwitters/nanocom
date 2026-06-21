@@ -28,6 +28,20 @@
 #include "nidl_codegen_c.h"
 
 #define MAX_INCLUDE_DIRS 64
+#define NCOM_NIDLGEN_INCLUDE_ENV "NCOM_NIDLGEN_INCLUDE"
+#define INCLUDE_ENV_BUF_SIZE 4096
+
+static int push_include_dir(const char **include_dirs, int *n_include_dirs, const char *dir)
+{
+    if (!include_dirs || !n_include_dirs || !dir || dir[0] == '\0') {
+        return 0;
+    }
+    if (*n_include_dirs >= MAX_INCLUDE_DIRS) {
+        return 0;
+    }
+    include_dirs[(*n_include_dirs)++] = dir;
+    return 1;
+}
 
 static char *read_all(arena_t *a,const char *path)
 {
@@ -49,19 +63,59 @@ int main(int argc, char **argv)
 {
     if (argc < 3) {
         fprintf(stderr, "usage: nidlgen <input.idl> <out_dir> [-I<dir>...]\n");
+        fprintf(stderr, "env: %s=\"dir1:dir2\" (or ';' separated)\n", NCOM_NIDLGEN_INCLUDE_ENV);
         return 2;
     }
 
-    /* Collect -I include directories from optional extra arguments. */
+    /* Collect include directories from environment, then CLI overrides/additions. */
     const char *include_dirs[MAX_INCLUDE_DIRS];
     int n_include_dirs = 0;
+    char include_env_buf[INCLUDE_ENV_BUF_SIZE];
+
+    memset(include_env_buf, 0, sizeof(include_env_buf));
+
+    {
+        const char *include_env = getenv(NCOM_NIDLGEN_INCLUDE_ENV);
+        if (include_env && include_env[0] != '\0') {
+            size_t env_len = strlen(include_env);
+            if (env_len >= sizeof(include_env_buf)) {
+                fprintf(stderr, "nidlgen: %s exceeds %u bytes\n",
+                        NCOM_NIDLGEN_INCLUDE_ENV, (unsigned)sizeof(include_env_buf) - 1u);
+                return 2;
+            }
+            memcpy(include_env_buf, include_env, env_len + 1);
+#ifdef _WIN32
+            const char *delims = ";";
+#else
+            const char *delims = ":;";
+#endif
+            char *tok = strtok(include_env_buf, delims);
+            while (tok) {
+                if (!push_include_dir(include_dirs, &n_include_dirs, tok)) {
+                    fprintf(stderr, "nidlgen: too many include directories\n");
+                    return 2;
+                }
+                tok = strtok(NULL, delims);
+            }
+        }
+    }
+
     for (int i = 3; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'I') {
             const char *dir = (argv[i][2] != '\0') ? &argv[i][2]
                               : (i + 1 < argc ? argv[++i] : NULL);
-            if (dir && n_include_dirs < MAX_INCLUDE_DIRS)
-                include_dirs[n_include_dirs++] = dir;
+            if (!dir || dir[0] == '\0') {
+                fprintf(stderr, "nidlgen: -I requires a non-empty directory path\n");
+                return 2;
+            }
+            if (!push_include_dir(include_dirs, &n_include_dirs, dir)) {
+                fprintf(stderr, "nidlgen: too many include directories\n");
+                return 2;
+            }
+            continue;
         }
+        fprintf(stderr, "nidlgen: unknown argument: %s\n", argv[i]);
+        return 2;
     }
 
     /* Build the import context; push the root file for cycle detection. */

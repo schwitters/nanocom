@@ -12,26 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# 1. Das Plugin
+# 1) Plugin
 add_library(sample_plugin SHARED sample_plugin.c)
 
-# Binde das ncom Framework ein (vererbt automatisch include/ Pfade!)
+# Link against ncom (public includes are propagated by the target).
 target_link_libraries(sample_plugin PRIVATE ncom)
 
-# Generiere den C-Header aus der IDL vollautomatisch und binde ihn an das Plugin
+# Generate C headers from IDL and attach them to the target build graph.
 ncom_generate_headers(TARGET sample_plugin IDLS idl/demo.idl)
 
 if (MSVC)
-    target_compile_options(sample_plugin PRIVATE /W4)
+    target_compile_options(sample_plugin PRIVATE /W4 /WX)
 else()
-    target_compile_options(sample_plugin PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(sample_plugin PRIVATE -Wall -Wextra -Werror -Wpedantic)
 endif()
 
-# 2. Die Host-Anwendung
+# 2) Host application
 add_executable(host_app host_app.c)
 
-# Der Host linkt auch gegen ncom (für den Plugin Loader und die Base Interfaces)
+# Host links against ncom for plugin loader and base interfaces.
 target_link_libraries(host_app PRIVATE ncom)
 
-# Der Host braucht ebenfalls den generierten Header der IDL
+# Host also depends on the generated IDL header.
 ncom_generate_headers(TARGET host_app IDLS idl/demo.idl)
+
+if (MSVC)
+    target_compile_options(host_app PRIVATE /W4 /WX)
+else()
+    target_compile_options(host_app PRIVATE -Wall -Wextra -Werror -Wpedantic)
+endif()

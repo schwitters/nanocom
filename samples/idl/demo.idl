@@ -1,6 +1,29 @@
 module demo {
 
   /**
+   * @brief Log level category.
+   *
+   * Recommended values:
+   *  - 0: debug
+   *  - 1: info
+   *  - 2: warning
+   *  - 3: error
+   */
+  typedef int log_level;
+
+  /**
+   * @brief Capability flags and API version of a component implementation.
+   */
+  struct component_capabilities {
+    unsigned int api_major;
+    unsigned int api_minor;
+    unsigned int supports_logger2;
+    unsigned int supports_clock2;
+    unsigned int supports_capabilities;
+    unsigned int supports_factory;
+  };
+
+  /**
    * @brief Logger interface.
    *
    * The logger is reference-counted via ncom_iunknown.
@@ -15,8 +38,27 @@ module demo {
      * @param level Severity/level (application-defined).
      * @param msg NUL-terminated UTF-8 message string.
      */
-    void log(in int level, in const char *msg);
+    void log(in log_level level, in const char *msg);
   };
+
+  /**
+   * @brief Versioned logger interface (v2).
+   *
+   * Extends i_logger with explicit length-aware string handling.
+   */
+  [uuid("5aaf85e3-6f8e-4d35-8cf3-c8f692f3f8f9")]
+  interface i_logger2 : i_logger {
+
+    /**
+     * @brief Log a UTF-8 message from a string view.
+     *
+     * @param level Severity/level (application-defined).
+     * @param msg Non-owning UTF-8 view.
+     * @return ncom_status_t Success or failure code.
+     */
+    ncom_status_t log_view(in log_level level, in string_view msg);
+  };
+
   /**
    * @brief Clock interface.
    *
@@ -51,6 +93,47 @@ module demo {
      */
     ncom_status_t now_unix_ms(out int64_t out_ms, [optional] out i_error_info out_err);
   };
+
+  /**
+   * @brief Component capability discovery interface.
+   */
+  [uuid("52c74dbc-4577-49fa-a36a-9cbe75d4ea06")]
+  interface i_capabilities : ncom_iunknown {
+
+    /**
+     * @brief Returns the API version exposed by this component implementation.
+     */
+    ncom_status_t get_api_version(out unsigned int out_major, out unsigned int out_minor);
+
+    /**
+     * @brief Returns capability flags for feature discovery.
+     */
+    ncom_status_t get_component_capabilities(out unsigned int out_supports_logger2,
+                                             out unsigned int out_supports_clock2,
+                                             out unsigned int out_supports_capabilities,
+                                             out unsigned int out_supports_factory);
+  };
+
+  /**
+   * @brief Component factory interface.
+   *
+   * Provides an IDL-level activation contract independent of plugin API wiring.
+   */
+  [uuid("3c0f08ef-27df-4701-a6d7-95b6e7f2f671")]
+  interface i_component_factory : ncom_iunknown {
+
+    /**
+     * @brief Create a sample component and return the requested interface.
+     *
+     * @param iid Requested interface IID.
+     * @param out_obj Receives the requested interface as ncom_iunknown identity pointer.
+     * @param out_err Optional rich error object for failure details.
+     * @return ncom_status_t Success or failure code.
+     */
+    ncom_status_t create_sample_component(in const_iid_ptr iid,
+                                          out i_unknown out_obj,
+                                          [optional] out i_error_info out_err);
+  };
   
   /**
      * @brief The main sample component implementing logger and clock features.
@@ -58,8 +141,18 @@ module demo {
     [uuid("f7166ba2-c59f-489c-8d1a-6fd97c917a53")]
     coclass sample_component {
         interface i_logger;
+        interface i_logger2;
         interface i_clock;
         interface i_clock2;
+        interface i_capabilities;
+    };
+
+    /**
+     * @brief IDL-level factory coclass.
+     */
+    [uuid("404d4848-7a68-40fd-8b45-53d6ef9450f9")]
+    coclass sample_component_factory {
+        interface i_component_factory;
     };
   
 };

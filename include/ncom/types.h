@@ -84,6 +84,16 @@ typedef struct ncom_char_buf_s {
     uint64_t cap; /**< Capacity in bytes of @c ptr. */
 } ncom_char_buf_t;
 
+#ifdef __cplusplus
+#define NCOM_STATIC_ASSERT(COND, MSG) static_assert((COND), MSG)
+#else
+#define NCOM_STATIC_ASSERT(COND, MSG) _Static_assert((COND), MSG)
+#endif
+
+NCOM_STATIC_ASSERT(sizeof(ncom_status_t) == 4, "ncom_status_t must be 32-bit");
+NCOM_STATIC_ASSERT(sizeof(ncom_iid_t) == 16, "ncom_iid_t must be 128-bit");
+NCOM_STATIC_ASSERT(sizeof(ncom_clsid_t) == 16, "ncom_clsid_t must be 128-bit");
+
 /** Compare two IIDs for equality. */
 #define NCOM_IID_EQ(A, B)   (((A)->hi == (B)->hi) && ((A)->lo == (B)->lo))
 
