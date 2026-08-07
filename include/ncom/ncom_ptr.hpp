@@ -186,6 +186,26 @@ public:
         }
         return st;
     }
+
+    // --- Comparison Operators ---
+
+    template <typename U>
+    bool operator==(const ptr<U>& other) const { return ptr_ == other.get(); }
+
+    template <typename U>
+    bool operator!=(const ptr<U>& other) const { return ptr_ != other.get(); }
+
+    bool operator==(std::nullptr_t) const { return ptr_ == nullptr; }
+    bool operator!=(std::nullptr_t) const { return ptr_ != nullptr; }
+
+    friend bool operator==(std::nullptr_t, const ptr& p) { return p.get() == nullptr; }
+    friend bool operator!=(std::nullptr_t, const ptr& p) { return p.get() != nullptr; }
+
+    bool operator==(const T* other) const { return ptr_ == other; }
+    bool operator!=(const T* other) const { return ptr_ != other; }
+
+    friend bool operator==(const T* lhs, const ptr& rhs) { return lhs == rhs.get(); }
+    friend bool operator!=(const T* lhs, const ptr& rhs) { return lhs != rhs.get(); }
 };
 
 } // namespace ncom

@@ -23,6 +23,7 @@
 
 #include <ncom/errors.h>
 #include <ncom/plugin.h>
+#include <ncom/error_info.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,12 +52,14 @@ typedef struct ncom_plugin_handle_s ncom_plugin_handle_t;
  * @param path       File system path to the dynamic library (.dll/.so/.dylib).
  * @param out_handle Receives the opaque plugin handle on success (owned by caller).
  * @param out_api    Receives a pointer to the plugin's API table (read-only).
+ * @param out_err    Optional. Receives an AddRef'ed error info object on failure.
  * @return Status code.
  */
 ncom_status_t ncom_plugin_load(
-    const char                *path,
-    ncom_plugin_handle_t     **out_handle,
-    const ncom_plugin_api_v1_t **out_api
+    const char                 *path,
+    ncom_plugin_handle_t      **out_handle,
+    const ncom_plugin_api_v1_t **out_api,
+    ncom_ierror_info_t        **out_err
 );
 
 /**

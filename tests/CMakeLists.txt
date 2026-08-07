@@ -42,3 +42,14 @@ else()
 endif()
 
 add_test(NAME NcomUnitTests COMMAND ncom_unit_tests)
+
+add_executable(ncom_cpp_tests ncom_cpp_tests.cpp)
+target_link_libraries(ncom_cpp_tests PRIVATE ncom)
+
+if(MSVC)
+    target_compile_options(ncom_cpp_tests PRIVATE /W4 /WX)
+else()
+    target_compile_options(ncom_cpp_tests PRIVATE -Wall -Wextra -Werror -Wpedantic)
+endif()
+
+add_test(NAME NcomCppTests COMMAND ncom_cpp_tests)

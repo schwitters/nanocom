@@ -23,6 +23,7 @@
 #include <ncom/plugin.h>
 #include <ncom/plugin_loader.h>
 #include <ncom/style.h>
+#include <ncom/core_impl.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -32,19 +33,36 @@
   struct ncom_plugin_handle_s { HMODULE lib; const ncom_plugin_api_v1_t *api; };
   static void *sym(HMODULE lib, const char *name) { return (void *)GetProcAddress(lib, name); }
   /* Map a LoadLibrary failure to NCOM_E_NOT_FOUND (file missing) or NCOM_E_FAIL (other). */
-  static ncom_status_t win_load_error(void) {
+  static ncom_status_t win_load_error(ncom_ierror_info_t **out_err) {
       DWORD e = GetLastError();
-      return (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND || e == ERROR_MOD_NOT_FOUND)
+      ncom_status_t st = (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND || e == ERROR_MOD_NOT_FOUND)
              ? NCOM_E_NOT_FOUND : NCOM_E_FAIL;
+      if (out_err) {
+          char msg[512] = {0};
+          FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                         NULL, e, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                         msg, sizeof(msg) - 1, NULL);
+          size_t len = strlen(msg);
+          while (len > 0 && (msg[len-1] == '\n' || msg[len-1] == '\r')) {
+              msg[--len] = '\0';
+          }
+          ncom_create_error_info(st, msg, out_err);
+      }
+      return st;
   }
 #else
   #include <dlfcn.h>
   #include <sys/stat.h>
   struct ncom_plugin_handle_s { void *lib; const ncom_plugin_api_v1_t *api; };
   /* Map a dlopen failure to NCOM_E_NOT_FOUND (file missing) or NCOM_E_FAIL (other, e.g. missing deps). */
-  static ncom_status_t posix_load_error(const char *path) {
+  static ncom_status_t posix_load_error(const char *path, ncom_ierror_info_t **out_err) {
       struct stat sb;
-      return (stat(path, &sb) != 0) ? NCOM_E_NOT_FOUND : NCOM_E_FAIL;
+      ncom_status_t st = (stat(path, &sb) != 0) ? NCOM_E_NOT_FOUND : NCOM_E_FAIL;
+      if (out_err) {
+          const char *err_msg = dlerror();
+          ncom_create_error_info(st, err_msg ? err_msg : "Unknown dlopen error", out_err);
+      }
+      return st;
   }
 
   // POSIX dlsym() returns a data pointer; converting it to a function pointer is
@@ -66,7 +84,7 @@
   }
 #endif
 
-ncom_status_t ncom_plugin_load(const char *path, ncom_plugin_handle_t **out_handle, const ncom_plugin_api_v1_t **out_api)
+ncom_status_t ncom_plugin_load(const char *path, ncom_plugin_handle_t **out_handle, const ncom_plugin_api_v1_t **out_api, ncom_ierror_info_t **out_err)
 {
     ncom_status_t st = NCOM_OK;
     ncom_plugin_handle_t *h = NULL;
@@ -75,6 +93,7 @@ ncom_status_t ncom_plugin_load(const char *path, ncom_plugin_handle_t **out_hand
 
     if (out_handle) *out_handle = NULL;
     if (out_api) *out_api = NULL;
+    if (out_err) *out_err = NULL;
 
     NCOM_CHECK_NULL(path);
     NCOM_CHECK_NULL(out_handle);
@@ -85,10 +104,10 @@ ncom_status_t ncom_plugin_load(const char *path, ncom_plugin_handle_t **out_hand
 
 #ifdef _WIN32
     h->lib = LoadLibraryA(path);
-    if (!h->lib) { st = win_load_error(); goto cleanup; }
+    if (!h->lib) { st = win_load_error(out_err); goto cleanup; }
 #else
     h->lib = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-    if (!h->lib) { st = posix_load_error(path); goto cleanup; }
+    if (!h->lib) { st = posix_load_error(path, out_err); goto cleanup; }
 #endif
 
     // Retrieve the strictly defined C entry point symbol

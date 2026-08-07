@@ -57,7 +57,16 @@ static inline uint32_t ncom_refcnt_inc(ncom_refcnt_t *rc) { return (uint32_t)Int
 static inline uint32_t ncom_refcnt_dec(ncom_refcnt_t *rc) { return (uint32_t)InterlockedDecrement(rc); }
 
 #else
-#  include <stdatomic.h>
+#  ifdef __cplusplus
+} /* extern "C" */
+#    include <atomic>
+extern "C" {
+typedef std::atomic<uint32_t> ncom_refcnt_t;
+static inline void ncom_refcnt_init(ncom_refcnt_t *rc, uint32_t v) { rc->store(v, std::memory_order_relaxed); }
+static inline uint32_t ncom_refcnt_inc(ncom_refcnt_t *rc) { return rc->fetch_add(1u, std::memory_order_relaxed) + 1u; }
+static inline uint32_t ncom_refcnt_dec(ncom_refcnt_t *rc) { return rc->fetch_sub(1u, std::memory_order_acq_rel) - 1u; }
+#  else
+#    include <stdatomic.h>
 
 /**
  * @brief Reference counter type (C11 atomics, explicit 32-bit).
@@ -82,6 +91,7 @@ static inline uint32_t ncom_refcnt_dec(ncom_refcnt_t *rc)
 {
     return atomic_fetch_sub_explicit(rc, 1u, memory_order_acq_rel) - 1u;
 }
+#  endif
 #endif
 
 /** @} */

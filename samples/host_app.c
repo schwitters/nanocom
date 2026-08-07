@@ -68,7 +68,7 @@ int main(int argc, char **argv)
         default_plugin_path(path, sizeof(path));
     }
 
-    NCOM_CHECK(ncom_plugin_load(path, &ph, &api));
+    NCOM_CHECK(ncom_plugin_load(path, &ph, &api, &err));
 
     /* Create component as IUnknown first, then query for specific interfaces. */
     NCOM_CHECK(api->create_instance(&DEMO_CLSID_SAMPLE_COMPONENT, &NCOM_IID_IUNKNOWN, (void **)&u));
@@ -162,8 +162,6 @@ int main(int argc, char **argv)
     log->vtbl->log(log, 1, msg);
 
 cleanup:
-    ncom_istring_releasep(&err_str);
-    ncom_ierror_info_releasep(&err);
     demo_iclock_releasep(&clock_from_factory);
     ncom_iunknown_releasep(&clock_from_factory_u);
     demo_icomponent_factory_releasep(&factory);
@@ -176,7 +174,21 @@ cleanup:
     ncom_plugin_unload(ph);
     if (NCOM_FAILED(st)) {
         fprintf(stderr, "host_app failed: %d\n", st);
+        if (err) {
+            ncom_istring_t *msg_str = NULL;
+            if (NCOM_SUCCEEDED(err->vtbl->get_message_string(err, &msg_str)) && msg_str) {
+                const char *s = NULL;
+                if (NCOM_SUCCEEDED(msg_str->vtbl->c_str(msg_str, &s)) && s) {
+                    fprintf(stderr, "  error detail: %s\n", s);
+                }
+                ncom_istring_releasep(&msg_str);
+            }
+        }
+        ncom_istring_releasep(&err_str);
+        ncom_ierror_info_releasep(&err);
         return 1;
     }
+    ncom_istring_releasep(&err_str);
+    ncom_ierror_info_releasep(&err);
     return 0;
 }

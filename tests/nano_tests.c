@@ -104,7 +104,7 @@ TEST_CASE(test_plugin_load_and_qi)
     char path[512];
     const char* p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
 
-    CHECK(ncom_plugin_load(p, &ph, &api));
+    CHECK(ncom_plugin_load(p, &ph, &api, NULL));
     ASSERT_NOT_NULL(api);
 
     /* IIDs and CLSIDs are passed by reference (&). */
@@ -173,7 +173,7 @@ TEST_CASE(test_error_info_and_string_patterns)
     char path[512];
     const char* p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
 
-    CHECK(ncom_plugin_load(p, &ph, &api));
+    CHECK(ncom_plugin_load(p, &ph, &api, NULL));
     CHECK(api->create_instance(&DEMO_CLSID_SAMPLE_COMPONENT, &NCOM_IID_IUNKNOWN, (void**)&u));
     CHECK(demo_iclock2_qi(u, &clk2));
 
@@ -231,7 +231,7 @@ TEST_CASE(test_refcount_basic)
     char path[512];
     const char* p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
 
-    CHECK(ncom_plugin_load(p, &ph, &api));
+    CHECK(ncom_plugin_load(p, &ph, &api, NULL));
 
     /* Create as ILogger directly: initial refcount should be 1. */
     CHECK(api->create_instance(&DEMO_CLSID_SAMPLE_COMPONENT, &DEMO_IID_ILOGGER, (void**)&log));
@@ -268,16 +268,35 @@ TEST_CASE(test_plugin_load_missing_file)
     ncom_status_t st = NCOM_OK;
     ncom_plugin_handle_t* ph = NULL;
     const ncom_plugin_api_v1_t* api = NULL;
+    ncom_ierror_info_t* err = NULL;
+    ncom_istring_t* msg_str = NULL;
 
 #ifdef _WIN32
-    st = ncom_plugin_load("this_file_does_not_exist_12345.dll", &ph, &api);
+    st = ncom_plugin_load("this_file_does_not_exist_12345.dll", &ph, &api, &err);
 #else
-    st = ncom_plugin_load("this_file_does_not_exist_12345.so", &ph, &api);
+    st = ncom_plugin_load("this_file_does_not_exist_12345.so", &ph, &api, &err);
 #endif
 
     ASSERT_TRUE(NCOM_FAILED(st));
     ASSERT_TRUE(ph == NULL);
     ASSERT_TRUE(api == NULL);
+    ASSERT_NOT_NULL(err);
+
+    ncom_status_t err_code = NCOM_OK;
+    CHECK(err->vtbl->get_code(err, &err_code));
+    ASSERT_EQ_I32(err_code, NCOM_E_NOT_FOUND);
+
+    CHECK(err->vtbl->get_message_string(err, &msg_str));
+    ASSERT_NOT_NULL(msg_str);
+
+    const char* s = NULL;
+    CHECK(msg_str->vtbl->c_str(msg_str, &s));
+    ASSERT_NOT_NULL(s);
+    ASSERT_TRUE(strlen(s) > 0);
+
+cleanup:
+    ncom_istring_releasep(&msg_str);
+    ncom_ierror_info_releasep(&err);
 }
 
 TEST_CASE(test_factory_contract)
@@ -293,7 +312,7 @@ TEST_CASE(test_factory_contract)
     char path[512];
     const char* p = get_plugin_path(g_argc, g_argv, path, sizeof(path));
 
-    CHECK(ncom_plugin_load(p, &ph, &api));
+    CHECK(ncom_plugin_load(p, &ph, &api, NULL));
     CHECK(api->create_instance(&DEMO_CLSID_SAMPLE_COMPONENT_FACTORY,
                                &DEMO_IID_ICOMPONENT_FACTORY, (void**)&fac));
     ASSERT_NOT_NULL(fac);
