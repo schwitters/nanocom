@@ -23,6 +23,7 @@ add_executable(nidlgen
     main.c
     nidl_arena.c
     nidl_codegen_c.c
+    nidl_codegen_wit.c
 )
 target_compile_definitions(nidlgen PRIVATE _CRT_SECURE_NO_WARNINGS)
 target_include_directories(nidlgen PRIVATE

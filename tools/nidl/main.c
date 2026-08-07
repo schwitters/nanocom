@@ -26,6 +26,7 @@
 #include "nidl_arena.h"
 #include "nidl_parse.h"
 #include "nidl_codegen_c.h"
+#include "nidl_codegen_wit.h"
 
 #define MAX_INCLUDE_DIRS 64
 #define NCOM_NIDLGEN_INCLUDE_ENV "NCOM_NIDLGEN_INCLUDE"
@@ -141,12 +142,18 @@ int main(int argc, char **argv)
     }
 
     if (!codegen_c_headers(a, ast, argv[2])) {
-        fprintf(stderr, "nidlgen: codegen failed\n");
+        fprintf(stderr, "nidlgen: C codegen failed\n");
         arena_destroy(a);
         return 1;
     }
 
-    fprintf(stderr, "nidlgen: generated C headers into %s/include\n", argv[2]);
+    if (!codegen_wit(a, ast, argv[2])) {
+        fprintf(stderr, "nidlgen: WIT codegen failed\n");
+        arena_destroy(a);
+        return 1;
+    }
+
+    fprintf(stderr, "nidlgen: generated C headers into %s/include and WIT into %s/wit\n", argv[2], argv[2]);
     arena_destroy(a);
     return 0;
 }
